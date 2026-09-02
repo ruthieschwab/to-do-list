@@ -213,6 +213,14 @@
     html += '<div class="dk-panel" id="dk-syncpanel"' + (syncPanelOpen ? '' : ' hidden') + '>' + panelHTML() + '</div>';
     document.getElementById('app').innerHTML = html;
     wire();
+    fitHeader();
+  }
+
+  // The header is position: fixed (see index.html); push the content down by its
+  // actual height, which changes with viewport width and once web fonts load.
+  function fitHeader(){
+    var h = document.querySelector('.dk-header');
+    if(h) document.getElementById('app').style.paddingTop = h.offsetHeight + 'px';
   }
 
   function exportBackup(){
@@ -668,6 +676,8 @@
 
   function init(){
     render();
+    window.addEventListener('resize', fitHeader);
+    if(document.fonts && document.fonts.ready) document.fonts.ready.then(fitHeader);
     document.addEventListener('pointerdown', closeEditingIfOutside);
     window.addEventListener('online', function(){ refreshStatus(); scheduleSync(0); });
     window.addEventListener('offline', refreshStatus);
