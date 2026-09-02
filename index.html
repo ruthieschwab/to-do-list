@@ -281,6 +281,28 @@ body {
 }
 .dk-link:hover { color: var(--ink); }
 .dk-sep { padding: 0 4px; }
+.dk-panel {
+  margin: 12px 10px 0; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  font-size: 0.86rem; line-height: 1.45; color: var(--ink-muted);
+}
+.dk-panel p { margin: 0 0 10px; }
+.dk-panel b { color: var(--ink); font-weight: 600; }
+.dk-panelrow { display: flex; gap: 8px; }
+.dk-panel input {
+  flex: 1; min-width: 0; font: inherit; padding: 8px 10px;
+  border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface-sunken); color: var(--ink);
+}
+.dk-panel input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dk-btn {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; font-weight: 500;
+  padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface-sunken); color: var(--ink);
+}
+.dk-btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.dk-panelmsg { margin: 10px 0 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; }
+.dk-panelmsg:empty { display: none; }
 @media (prefers-reduced-motion: no-preference) {
   .dk-row { transition: transform 0.18s ease, box-shadow 0.18s ease; }
   .dk-row.dragging { transition: none; }
@@ -289,6 +311,7 @@ body {
 </head>
 <body>
 <div id="app"></div>
+<script src="./sync.js"></script>
 <script src="./app.js"></script>
 <script>
 if('serviceWorker' in navigator){

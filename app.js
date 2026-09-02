@@ -13,12 +13,30 @@
   }
 
   var state = loadState();
+  // Tasks saved before sync existed have no updatedAt; give them one so merge can compare.
+  state.tasks.forEach(function(t){ if(!t.updatedAt) t.updatedAt = state.savedAt || Date.now(); });
   var storageOk = true;
   var dragCtx = null;
   var editingId = null;
+  var renderPending = false;
   var filterTag = '';
   var view = 'active';
   var tickTimer = null;
+  var syncPanelOpen = false;
+
+  // ---- Sync (optional; see sync.js) ----
+  var SYNC_KEY = 'docket.sync.v1';
+  var syncCfg = loadSyncCfg();
+  var syncState = { status: syncCfg ? 'idle' : 'off', lastAt: 0, error: '', inflight: false, again: false, timer: null };
+
+  function loadSyncCfg(){
+    try { var c = JSON.parse(localStorage.getItem(SYNC_KEY)); return c && c.token ? c : null; } catch(e){ return null; }
+  }
+  function saveSyncCfg(c){
+    syncCfg = c;
+    try { if(c) localStorage.setItem(SYNC_KEY, JSON.stringify(c)); else localStorage.removeItem(SYNC_KEY); } catch(e){}
+  }
+  function touch(t){ t.updatedAt = Date.now(); }
 
   var TAG_RULES = {
     work: /\b(work|meeting|email|e-mail|project|deadline|client|boss|office|standup|sprint|ticket|jira|slack|invoice|interview|report|presentation|call with|coworker|colleague)\b/i,
@@ -38,8 +56,9 @@
     if(filterTag === 'urgent') return !!t.urgent;
     return (t.tags||[]).indexOf(filterTag) !== -1;
   }
-  function activeTasks(){ return state.tasks.filter(function(t){ return !t.done && matchesFilter(t); }).sort(function(a,b){ return a.order - b.order; }); }
-  function doneTasks(){ return state.tasks.filter(function(t){ return t.done && matchesFilter(t); }).sort(function(a,b){ return (b.doneAt||0) - (a.doneAt||0); }); }
+  function liveTasks(){ return state.tasks.filter(function(t){ return !t.deleted; }); }
+  function activeTasks(){ return liveTasks().filter(function(t){ return !t.done && matchesFilter(t); }).sort(function(a,b){ return a.order - b.order; }); }
+  function doneTasks(){ return liveTasks().filter(function(t){ return t.done && matchesFilter(t); }).sort(function(a,b){ return (b.doneAt||0) - (a.doneAt||0); }); }
 
   function esc(s){ return (s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
@@ -58,18 +77,66 @@
     return out;
   }
 
+  function ago(ts, verb, never){
+    if(!ts) return never;
+    var s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if(s < 45) return verb + ' just now';
+    var m = Math.floor(s / 60);
+    if(m < 60) return verb + ' ' + m + 'm ago';
+    var h = Math.floor(m / 60);
+    if(h < 24) return verb + ' ' + h + 'h ago';
+    var d = Math.floor(h / 24);
+    return verb + ' ' + d + 'd ago';
+  }
+
   function statusText(){
     if(!storageOk) return "can't save on this device";
-    var ts = state.savedAt;
-    if(!ts) return 'not saved yet';
-    var s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-    if(s < 45) return 'saved just now';
-    var m = Math.floor(s / 60);
-    if(m < 60) return 'saved ' + m + 'm ago';
-    var h = Math.floor(m / 60);
-    if(h < 24) return 'saved ' + h + 'h ago';
-    var d = Math.floor(h / 24);
-    return 'saved ' + d + 'd ago';
+    if(syncCfg){
+      if(syncState.status === 'syncing') return 'syncing…';
+      if(!navigator.onLine || syncState.status === 'offline') return 'offline · saved on this device';
+      if(syncState.status === 'error') return 'sync failed · saved on this device';
+      return ago(syncState.lastAt, 'synced', 'not synced yet');
+    }
+    return ago(state.savedAt, 'saved', 'not saved yet');
+  }
+
+  function statusBad(){
+    return !navigator.onLine || (syncCfg && (syncState.status === 'offline' || syncState.status === 'error'));
+  }
+
+  function syncErrorText(){
+    var e = syncState.error;
+    if(e === 'unauthorized') return 'GitHub rejected the token.';
+    if(e === 'forbidden') return "The token can't access gists (needs the gist scope).";
+    if(e === 'gist missing') return 'The sync gist was deleted; a new one will be created on the next sync.';
+    if(/fetch/i.test(e)) return "Couldn't reach GitHub.";
+    return 'Sync failed: ' + e;
+  }
+
+  function panelMessage(){
+    if(!syncCfg) return syncState.error ? syncErrorText() : '';
+    if(syncState.status === 'syncing') return 'Syncing…';
+    if(syncState.status === 'error') return syncErrorText();
+    if(!navigator.onLine) return 'Offline. Changes will sync when you reconnect.';
+    return 'Connected to your GitHub gist. ' + ago(syncState.lastAt, 'Last synced', 'Not synced yet') + '.';
+  }
+
+  function panelHTML(){
+    if(syncCfg){
+      return '<p>This list is kept in sync across your devices through a secret gist on your GitHub account.</p>' +
+        '<div class="dk-panelrow">' +
+          '<button class="dk-btn" id="dk-syncnow">Sync now</button>' +
+          '<button class="dk-btn" id="dk-disconnect">Disconnect</button>' +
+        '</div>' +
+        '<p class="dk-panelmsg" id="dk-syncmsg">' + esc(panelMessage()) + '</p>';
+    }
+    return '<p>Keep this list in sync across your devices through a secret gist on your GitHub account. ' +
+      'Paste a GitHub token that has only the <b>gist</b> scope. It is stored on this device only.</p>' +
+      '<div class="dk-panelrow">' +
+        '<input type="password" id="dk-token" placeholder="GitHub token" autocomplete="off" autocapitalize="off" spellcheck="false">' +
+        '<button class="dk-btn primary" id="dk-connect">Connect</button>' +
+      '</div>' +
+      '<p class="dk-panelmsg" id="dk-syncmsg">' + esc(panelMessage()) + '</p>';
   }
 
   function tagChip(t, key, label){
@@ -116,7 +183,7 @@
     html += '<div class="dk-header">';
     html += '<div class="dk-titlerow"><h1 class="dk-title">To Do List</h1>' +
             '<div class="dk-meta">' +
-              '<span class="dk-sync' + (navigator.onLine ? '' : ' offline') + '" id="dk-sync"><span class="dot"></span><span id="dk-synctime">' + statusText() + '</span></span>' +
+              '<span class="dk-sync' + (statusBad() ? ' offline' : '') + '" id="dk-sync"><span class="dot"></span><span id="dk-synctime">' + statusText() + '</span></span>' +
             '</div></div>';
     html += '<div class="dk-filterbar">' + viewBtn('active', 'Active', active.length) + viewBtn('done', 'Done', done.length) + '</div>';
     html += '<div class="dk-filterbar">' + filterBtn('', 'All') + filterBtn('urgent', '⏰ urgent') + filterBtn('work', '#work') + filterBtn('fam', '#fam') + filterBtn('house', '#house') + '</div>';
@@ -139,14 +206,17 @@
       '<button class="dk-link" id="dk-export">Export backup</button>' +
       '<span class="dk-sep">·</span>' +
       '<button class="dk-link" id="dk-import">Import backup</button>' +
+      '<span class="dk-sep">·</span>' +
+      '<button class="dk-link" id="dk-synclink">' + (syncCfg ? 'Sync settings' : 'Set up sync') + '</button>' +
       '<input type="file" id="dk-importfile" accept=".json,application/json" hidden>' +
     '</div>';
+    html += '<div class="dk-panel" id="dk-syncpanel"' + (syncPanelOpen ? '' : ' hidden') + '>' + panelHTML() + '</div>';
     document.getElementById('app').innerHTML = html;
     wire();
   }
 
   function exportBackup(){
-    var json = JSON.stringify({ tasks: state.tasks, exportedAt: Date.now() }, function(k, v){ return k === '_notesOpen' ? undefined : v; }, 1);
+    var json = JSON.stringify({ tasks: liveTasks(), exportedAt: Date.now() }, function(k, v){ return k === '_notesOpen' ? undefined : v; }, 1);
     var blob = new Blob([json], { type: 'application/json' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
@@ -168,8 +238,15 @@
         alert("That file isn't a To Do List backup.");
         return;
       }
-      if(state.tasks.length && !confirm('Replace the ' + state.tasks.length + ' tasks on this device with the ' + tasks.length + ' in the backup?')) return;
-      state.tasks = tasks;
+      var current = liveTasks();
+      if(current.length && !confirm('Replace the ' + current.length + ' tasks on this device with the ' + tasks.length + ' in the backup?')) return;
+      // Import is a replace: everything in the file becomes current, everything
+      // not in it is tombstoned so the removal also reaches other devices.
+      var now = Date.now();
+      var inFile = {};
+      tasks.forEach(function(t){ inFile[t.id] = true; t.updatedAt = now; delete t.deleted; });
+      var removed = state.tasks.filter(function(t){ return !inFile[t.id]; }).map(function(t){ return { id: t.id, deleted: true, updatedAt: now }; });
+      state.tasks = tasks.concat(removed);
       editingId = null;
       render();
       save();
@@ -181,10 +258,12 @@
     var el = document.getElementById('dk-synctime');
     if(el) el.textContent = statusText();
     var sync = document.getElementById('dk-sync');
-    if(sync) sync.classList.toggle('offline', !navigator.onLine);
+    if(sync) sync.classList.toggle('offline', statusBad());
+    var msg = document.getElementById('dk-syncmsg');
+    if(msg) msg.textContent = panelMessage();
   }
 
-  function save(){
+  function saveLocal(){
     state.savedAt = Date.now();
     try {
       // _notesOpen is transient UI state; don't persist it.
@@ -196,6 +275,11 @@
     refreshStatus();
   }
 
+  function save(){
+    saveLocal();
+    scheduleSync();
+  }
+
   function wire(){
     var addInput = document.getElementById('dk-new');
     var addBtn = document.getElementById('dk-addbtn');
@@ -204,7 +288,7 @@
       if(!v) return;
       var active = activeTasks();
       var minOrder = active.reduce(function(m,t){ return Math.min(m, t.order||0); }, 0);
-      state.tasks.push({ id: uid(), text: v, notes: '', done: false, order: minOrder - 1, doneAt: 0, tags: autoTags(v), urgent: false });
+      state.tasks.push({ id: uid(), text: v, notes: '', done: false, order: minOrder - 1, doneAt: 0, tags: autoTags(v), urgent: false, updatedAt: Date.now() });
       render();
       save();
       var el = document.getElementById('dk-new');
@@ -220,6 +304,25 @@
       if(importFile.files && importFile.files[0]) importBackup(importFile.files[0]);
       importFile.value = '';
     });
+
+    var panel = document.getElementById('dk-syncpanel');
+    document.getElementById('dk-synclink').addEventListener('click', function(){
+      syncPanelOpen = !syncPanelOpen;
+      panel.hidden = !syncPanelOpen;
+      var tokenEl = document.getElementById('dk-token');
+      if(syncPanelOpen && tokenEl) tokenEl.focus();
+    });
+    var connectBtn = document.getElementById('dk-connect');
+    if(connectBtn){
+      var tokenInput = document.getElementById('dk-token');
+      var doConnect = function(){ connectSync(tokenInput.value); };
+      connectBtn.addEventListener('click', doConnect);
+      tokenInput.addEventListener('keydown', function(e){ if(e.key === 'Enter') doConnect(); });
+    }
+    var syncNowBtn = document.getElementById('dk-syncnow');
+    if(syncNowBtn) syncNowBtn.addEventListener('click', function(){ scheduleSync(0); });
+    var disconnectBtn = document.getElementById('dk-disconnect');
+    if(disconnectBtn) disconnectBtn.addEventListener('click', disconnectSync);
 
     document.querySelectorAll('[data-filter]').forEach(function(btn){
       btn.addEventListener('click', function(){
@@ -242,6 +345,7 @@
         if(!t) return;
         t.done = cb.checked;
         t.doneAt = cb.checked ? Date.now() : 0;
+        touch(t);
         render();
         save();
       });
@@ -254,7 +358,7 @@
         var t = state.tasks.find(function(x){ return x.id === id; });
         if(!t) return;
         var v = el.textContent.trim();
-        if(v && v !== t.text){ t.text = v; save(); }
+        if(v && v !== t.text){ t.text = v; touch(t); save(); }
         else if(!v){ el.textContent = t.text; }
       });
       el.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); el.blur(); } });
@@ -280,6 +384,7 @@
         var v = ta.value;
         var changed = v !== t.notes;
         t.notes = v;
+        if(changed) touch(t);
         t._notesOpen = false;
         render();
         if(changed) save();
@@ -295,6 +400,7 @@
         t.tags = t.tags || [];
         var i = t.tags.indexOf(key);
         if(i === -1) t.tags.push(key); else t.tags.splice(i, 1);
+        touch(t);
         render();
         save();
       });
@@ -306,6 +412,7 @@
         var t = state.tasks.find(function(x){ return x.id === id; });
         if(!t) return;
         t.urgent = !t.urgent;
+        touch(t);
         render();
         save();
       });
@@ -314,7 +421,11 @@
     document.querySelectorAll('[data-del]').forEach(function(btn){
       btn.addEventListener('click', function(){
         var id = btn.getAttribute('data-del');
-        state.tasks = state.tasks.filter(function(x){ return x.id !== id; });
+        var t = state.tasks.find(function(x){ return x.id === id; });
+        if(!t) return;
+        // Keep a tombstone so the deletion reaches other devices via sync.
+        t.deleted = true;
+        touch(t);
         render();
         save();
       });
@@ -458,7 +569,7 @@
     }
     order.forEach(function(id, i){
       var t = state.tasks.find(function(x){ return x.id === id; });
-      if(t) t.order = i;
+      if(t && t.order !== i){ t.order = i; touch(t); }
     });
     dragCtx = null;
     render();
@@ -472,14 +583,98 @@
     editingId = null;
     if(row.contains(document.activeElement)) document.activeElement.blur();
     row.classList.remove('editing');
+    if(renderPending){
+      // A remote change arrived while a title was being edited. Re-render, but
+      // not synchronously: this runs on pointerdown, and replacing the DOM
+      // before pointerup would swallow the tap that ended the edit.
+      setTimeout(function(){ if(renderPending){ renderPending = false; render(); } }, 350);
+    }
+  }
+
+  function scheduleSync(delay){
+    if(!syncCfg) return;
+    clearTimeout(syncState.timer);
+    syncState.timer = setTimeout(syncNow, delay == null ? 1500 : delay);
+  }
+
+  // Pull the gist, merge with local, write back whichever side changed.
+  function syncNow(){
+    if(!syncCfg) return Promise.resolve();
+    if(!navigator.onLine){ syncState.status = 'offline'; refreshStatus(); return Promise.resolve(); }
+    if(syncState.inflight){ syncState.again = true; return Promise.resolve(); }
+    syncState.inflight = true;
+    syncState.status = 'syncing';
+    refreshStatus();
+    var token = syncCfg.token;
+    var api = window.DocketSync.client(token);
+    var ensureGist = syncCfg.gistId
+      ? Promise.resolve(syncCfg.gistId)
+      : api.find().then(function(id){ return id || api.create(liveTasks()); }).then(function(id){ saveSyncCfg({ token: token, gistId: id }); return id; });
+    return ensureGist.then(function(id){
+      return api.load(id).then(function(remote){
+        var merged = window.DocketSync.merge(state.tasks, remote, Date.now());
+        var m = window.DocketSync.normalize(merged);
+        var localChanged = m !== window.DocketSync.normalize(state.tasks);
+        var remoteChanged = m !== window.DocketSync.normalize(remote);
+        if(localChanged){
+          state.tasks = merged;
+          saveLocal();
+          if(editingId) renderPending = true; else render();
+        }
+        return remoteChanged ? api.save(id, merged) : null;
+      }, function(err){
+        if(err && err.message === 'missing'){ saveSyncCfg({ token: token }); throw new Error('gist missing'); }
+        throw err;
+      });
+    }).then(function(){
+      syncState.status = 'idle';
+      syncState.lastAt = Date.now();
+      syncState.error = '';
+    }, function(err){
+      syncState.status = 'error';
+      syncState.error = (err && err.message) || String(err);
+    }).then(function(){
+      syncState.inflight = false;
+      refreshStatus();
+      if(syncState.again){ syncState.again = false; scheduleSync(500); }
+    });
+  }
+
+  function connectSync(token){
+    token = (token || '').trim();
+    if(!token) return;
+    saveSyncCfg({ token: token });
+    syncState.error = '';
+    return syncNow().then(function(){
+      if(syncState.status === 'error'){
+        // Don't keep a token that didn't work; keep the message so the panel can show it.
+        var msg = syncState.error;
+        saveSyncCfg(null);
+        syncState.status = 'off';
+        syncState.error = msg;
+      }
+      render();
+    });
+  }
+
+  function disconnectSync(){
+    clearTimeout(syncState.timer);
+    saveSyncCfg(null);
+    syncState.status = 'off';
+    syncState.error = '';
+    syncState.lastAt = 0;
+    render();
   }
 
   function init(){
     render();
     document.addEventListener('pointerdown', closeEditingIfOutside);
-    window.addEventListener('online', refreshStatus);
+    window.addEventListener('online', function(){ refreshStatus(); scheduleSync(0); });
     window.addEventListener('offline', refreshStatus);
+    document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') scheduleSync(0); });
     tickTimer = setInterval(refreshStatus, 20000);
+    setInterval(function(){ if(document.visibilityState === 'visible') scheduleSync(0); }, 5 * 60 * 1000);
+    if(syncCfg) scheduleSync(0);
   }
 
   init();
