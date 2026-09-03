@@ -177,7 +177,7 @@ body {
   padding: 12px 10px;
   margin: 0 0 8px;
   box-shadow: var(--shadow);
-  touch-action: none;
+  touch-action: pan-y; /* native vertical scrolling; long-press starts a drag (app.js) */
   -webkit-touch-callout: none;
   -webkit-user-select: none; user-select: none;
 }
@@ -259,6 +259,14 @@ body {
   cursor: pointer; padding: 2px 9px; border-radius: 999px; line-height: 1.4;
 }
 .dk-urgent.on { border-color: var(--urgent-border); color: var(--danger); background: var(--urgent-bg); font-weight: 500; }
+.dk-grip {
+  background: none; border: none; color: var(--ink-faint);
+  font-size: 1.05rem; padding: 4px 6px; line-height: 1;
+  cursor: grab;
+  touch-action: none; /* a touch starting here drags the row instead of scrolling */
+  -webkit-user-select: none; user-select: none;
+}
+.dk-row.dragging .dk-grip { cursor: grabbing; }
 .dk-del {
   background: none; border: none; color: var(--ink-faint);
   font-size: 1rem; cursor: pointer; padding: 4px 2px; line-height: 1;
