@@ -160,6 +160,7 @@
           '</div>' +
         '</div>' +
       '</div>' +
+      (t.done ? '' : '<button class="dk-grip" data-grip="' + t.id + '" aria-label="Drag to reorder">⠿</button>') +
       '<button class="dk-del" data-del="' + t.id + '" aria-label="Delete task">✕</button>' +
     '</li>';
   }
@@ -439,9 +440,18 @@
       });
     });
 
-    var LONG_PRESS_MS = 300;
-    var MOVE_THRESHOLD = 12;
-    var SCROLL_DECIDE_PX = 10;
+    // Reordering: press the grip (⠿) and move. The grip is touch-action: none, so
+    // the browser never scrolls from a touch that starts there; everywhere else on
+    // a row scrolls natively.
+    document.querySelectorAll('[data-grip]').forEach(function(grip){
+      grip.addEventListener('pointerdown', function(e){
+        if(e.button && e.button !== 0) return;
+        startDrag(e, grip.getAttribute('data-grip'));
+      });
+    });
+
+    // A tap on a row's title (no movement, not cancelled by a scroll) starts editing.
+    var TAP_PX = 8;
     function isInteractive(el){
       return !!el.closest('input, button, textarea, a, [contenteditable="true"]');
     }
@@ -449,46 +459,18 @@
       row.addEventListener('pointerdown', function(e){
         if(isInteractive(e.target)) return;
         var id = row.getAttribute('data-id');
-        var isMouse = e.pointerType === 'mouse';
         var startX = e.clientX, startY = e.clientY;
         var startTarget = e.target;
-        var fired = false;
-        var scrolling = false;
-        var lastY = startY;
-        if(!isMouse){ e.preventDefault(); row.setPointerCapture(e.pointerId); }
-        var timer = isMouse ? null : setTimeout(function(){
-          fired = true;
-          cleanup();
-          startDrag(e, id);
-        }, LONG_PRESS_MS);
+        var moved = false;
         function onMove(ev){
-          if(isMouse){
-            var movedPast = Math.abs(ev.clientX - startX) > MOVE_THRESHOLD || Math.abs(ev.clientY - startY) > MOVE_THRESHOLD;
-            if(!movedPast) return;
-            if(!fired){
-              fired = true;
-              cleanup();
-              startDrag(ev, id);
-            }
-            return;
+          if(Math.abs(ev.clientX - startX) > TAP_PX || Math.abs(ev.clientY - startY) > TAP_PX){
+            moved = true;
+            cleanup();
           }
-          if(fired) return;
-          if(scrolling){
-            var dy = lastY - ev.clientY;
-            if(dy) window.scrollBy(0, dy);
-            lastY = ev.clientY;
-            return;
-          }
-          var movedFar = Math.abs(ev.clientX - startX) > SCROLL_DECIDE_PX || Math.abs(ev.clientY - startY) > SCROLL_DECIDE_PX;
-          if(!movedFar) return;
-          clearTimeout(timer);
-          scrolling = true;
-          lastY = ev.clientY;
         }
-        function onUp(){
-          if(timer) clearTimeout(timer);
+        function onUp(ev){
           cleanup();
-          if(!fired && !scrolling){
+          if(!moved && ev.type !== 'pointercancel'){
             var textEl = startTarget.closest('.dk-text');
             if(textEl){
               editingId = id;
@@ -519,7 +501,7 @@
   function startDrag(e, id){
     e.preventDefault();
     var row = document.querySelector('.dk-row[data-id="' + id + '"]');
-    if(!row) return;
+    if(!row || dragCtx) return;
     var active = activeTasks();
     var idx = active.findIndex(function(t){ return t.id === id; });
     dragCtx = { id: id, startY: e.clientY, curIdx: idx, newIdx: idx, rowH: (row.offsetHeight + 8), pointerId: e.pointerId, order: active.map(function(t){ return t.id; }) };
