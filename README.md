@@ -1,6 +1,6 @@
 # To Do List
 
-A single-page to-do list that works offline and can sync across devices. Tasks have tags (`#work`, `#fam`, `#house`), an urgent flag, notes, and drag-to-reorder (drag the ⠿ handle; tap a title to edit it and reveal the note/tag controls). Installs to a phone home screen as an app.
+A single-page to-do list that works offline and can sync across devices. Tasks have tags (`#work`, `#fam`, `#house`), an urgent flag, notes, and drag-to-reorder (press and hold a card for a second, then move it; tap a title to edit it and reveal the note/tag controls). Installs to a phone home screen as an app.
 
 No build step and no dependencies — plain HTML/CSS/JS.
 
@@ -11,6 +11,7 @@ No build step and no dependencies — plain HTML/CSS/JS.
 | `index.html` | Page shell and styles |
 | `app.js` | The app. Saves to `localStorage` on every change; drives sync. |
 | `sync.js` | GitHub Gist client and the merge rule used by sync |
+| `tags.js` | Suggests tags for a new title: a small keyword seed plus what it learns from the tasks you've already tagged. Re-suggests when a title is edited, until you set that task's tags by hand. |
 | `sw.js` | Service worker that caches the app so it opens with no connection |
 | `manifest.json`, `icons/` | Home-screen install metadata |
 

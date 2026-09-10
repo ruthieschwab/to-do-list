@@ -259,14 +259,6 @@ body {
   cursor: pointer; padding: 2px 9px; border-radius: 999px; line-height: 1.4;
 }
 .dk-urgent.on { border-color: var(--urgent-border); color: var(--danger); background: var(--urgent-bg); font-weight: 500; }
-.dk-grip {
-  background: none; border: none; color: var(--ink-faint);
-  font-size: 1.05rem; padding: 4px 6px; line-height: 1;
-  cursor: grab;
-  touch-action: none; /* a touch starting here drags the row instead of scrolling */
-  -webkit-user-select: none; user-select: none;
-}
-.dk-row.dragging .dk-grip { cursor: grabbing; }
 .dk-del {
   background: none; border: none; color: var(--ink-faint);
   font-size: 1rem; cursor: pointer; padding: 4px 2px; line-height: 1;
@@ -327,6 +319,7 @@ body {
 <body>
 <div id="app"></div>
 <script src="./sync.js"></script>
+<script src="./tags.js"></script>
 <script src="./app.js"></script>
 <script>
 if('serviceWorker' in navigator){

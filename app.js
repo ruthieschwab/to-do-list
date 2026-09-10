@@ -38,15 +38,12 @@
   }
   function touch(t){ t.updatedAt = Date.now(); }
 
-  var TAG_RULES = {
-    work: /\b(work|meeting|email|e-mail|project|deadline|client|boss|office|standup|sprint|ticket|jira|slack|invoice|interview|report|presentation|call with|coworker|colleague)\b/i,
-    fam: /\b(family|kid|kids|son|daughter|mom|dad|mother|father|sister|brother|husband|wife|spouse|partner|grandma|grandpa|birthday|daycare|school pickup|anniversary)\b/i,
-    house: /\b(house|home|laundry|dishes|clean|cleaning|grocery|groceries|repair|plumber|rent|mortgage|trash|garbage|yard|lawn|furniture|vacuum|dishwasher|fridge|fix the|straps|highchair|high chair)\b/i
-  };
-  function autoTags(text){
-    var tags = [];
-    Object.keys(TAG_RULES).forEach(function(k){ if(TAG_RULES[k].test(text)) tags.push(k); });
-    return tags;
+  // Tags are suggested from the title (see tags.js), learning from the tasks
+  // already tagged. Suggested tags are re-derived if the title changes, until
+  // the user sets tags on that task by hand.
+  function autoTags(text, exceptId){
+    var examples = liveTasks().filter(function(t){ return t.id !== exceptId; });
+    return window.DocketTags.suggest(text, examples);
   }
 
   function uid(){ return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -160,7 +157,6 @@
           '</div>' +
         '</div>' +
       '</div>' +
-      (t.done ? '' : '<button class="dk-grip" data-grip="' + t.id + '" aria-label="Drag to reorder">⠿</button>') +
       '<button class="dk-del" data-del="' + t.id + '" aria-label="Delete task">✕</button>' +
     '</li>';
   }
@@ -297,7 +293,7 @@
       if(!v) return;
       var active = activeTasks();
       var minOrder = active.reduce(function(m,t){ return Math.min(m, t.order||0); }, 0);
-      state.tasks.push({ id: uid(), text: v, notes: '', done: false, order: minOrder - 1, doneAt: 0, tags: autoTags(v), urgent: false, updatedAt: Date.now() });
+      state.tasks.push({ id: uid(), text: v, notes: '', done: false, order: minOrder - 1, doneAt: 0, tags: autoTags(v), tagsAuto: true, urgent: false, updatedAt: Date.now() });
       render();
       save();
       var el = document.getElementById('dk-new');
@@ -367,10 +363,21 @@
         var t = state.tasks.find(function(x){ return x.id === id; });
         if(!t) return;
         var v = el.textContent.trim();
-        if(v && v !== t.text){ t.text = v; touch(t); save(); }
+        if(v && v !== t.text){
+          t.text = v;
+          var retag = t.tagsAuto !== false;
+          if(retag) t.tags = autoTags(v, t.id);
+          touch(t);
+          save();
+          // Refresh the tag chips. Re-rendering right away is safe after Enter; a
+          // blur caused by a tap elsewhere defers it (see closeEditingIfOutside)
+          // so the tap isn't lost to a DOM swap.
+          if(retag){ if(el._enterBlur) render(); else renderPending = true; }
+        }
         else if(!v){ el.textContent = t.text; }
+        el._enterBlur = false;
       });
-      el.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); el.blur(); } });
+      el.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); el._enterBlur = true; el.blur(); } });
     });
 
     document.querySelectorAll('[data-noteflag]').forEach(function(btn){
@@ -409,6 +416,7 @@
         t.tags = t.tags || [];
         var i = t.tags.indexOf(key);
         if(i === -1) t.tags.push(key); else t.tags.splice(i, 1);
+        t.tagsAuto = false; // set by hand from now on; title edits won't re-suggest
         touch(t);
         render();
         save();
@@ -440,37 +448,59 @@
       });
     });
 
-    // Reordering: press the grip (⠿) and move. The grip is touch-action: none, so
-    // the browser never scrolls from a touch that starts there; everywhere else on
-    // a row scrolls natively.
-    document.querySelectorAll('[data-grip]').forEach(function(grip){
-      grip.addEventListener('pointerdown', function(e){
-        if(e.button && e.button !== 0) return;
-        startDrag(e, grip.getAttribute('data-grip'));
-      });
-    });
-
-    // A tap on a row's title (no movement, not cancelled by a scroll) starts editing.
-    var TAP_PX = 8;
-    function isInteractive(el){
-      return !!el.closest('input, button, textarea, a, [contenteditable="true"]');
+    // Reordering: press and hold anywhere on a card for LONG_PRESS_MS, then move it.
+    // Rows are touch-action: pan-y, so a finger that moves before the hold is up
+    // scrolls the page natively (the browser then sends pointercancel). Once the
+    // hold completes, startDrag cancels touchmove for the rest of that touch so the
+    // page stays put under the moving card. With a mouse, moving past
+    // MOVE_THRESHOLD also starts a drag right away. A short tap on the title
+    // starts editing. A hold that began on a button (✕, checkbox, tag) never
+    // fires that button: onDragEnd suppresses the click that follows.
+    var LONG_PRESS_MS = 1000;
+    var MOVE_THRESHOLD = 12;
+    var CANCEL_PX = 8;
+    function isTextEntry(el){
+      return !!el.closest('a, textarea, [contenteditable="true"]');
     }
     document.querySelectorAll('#dk-active .dk-row').forEach(function(row){
+      row.addEventListener('contextmenu', function(e){ e.preventDefault(); });
       row.addEventListener('pointerdown', function(e){
-        if(isInteractive(e.target)) return;
+        if(e.button !== 0 || isTextEntry(e.target)) return;
         var id = row.getAttribute('data-id');
+        var isMouse = e.pointerType === 'mouse';
         var startX = e.clientX, startY = e.clientY;
         var startTarget = e.target;
+        var fired = false;
         var moved = false;
+        var timer = setTimeout(function(){
+          fired = true;
+          cleanup();
+          startDrag(e, id);
+        }, LONG_PRESS_MS);
         function onMove(ev){
-          if(Math.abs(ev.clientX - startX) > TAP_PX || Math.abs(ev.clientY - startY) > TAP_PX){
+          var dx = Math.abs(ev.clientX - startX), dy = Math.abs(ev.clientY - startY);
+          if(isMouse){
+            if(dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD){
+              fired = true;
+              clearTimeout(timer);
+              cleanup();
+              // Anchor the drag at the press position, not where the threshold
+              // was crossed, so the card doesn't lag the cursor.
+              startDrag(e, id);
+              onDragMove(ev);
+            }
+            return;
+          }
+          if(dx > CANCEL_PX || dy > CANCEL_PX){
             moved = true;
+            clearTimeout(timer);
             cleanup();
           }
         }
         function onUp(ev){
+          clearTimeout(timer);
           cleanup();
-          if(!moved && ev.type !== 'pointercancel'){
+          if(!fired && !moved && ev.type !== 'pointercancel'){
             var textEl = startTarget.closest('.dk-text');
             if(textEl){
               editingId = id;
@@ -498,18 +528,44 @@
     });
   }
 
+  // While a card is being dragged, cancel touchmove so the page doesn't scroll
+  // under it. This works because the hold completed with the finger still, so
+  // the browser hasn't started a scroll yet and the next touchmove is cancelable.
+  function blockTouchScroll(e){ e.preventDefault(); }
+  var suppressClickUntil = 0;
+
   function startDrag(e, id){
     e.preventDefault();
     var row = document.querySelector('.dk-row[data-id="' + id + '"]');
     if(!row || dragCtx) return;
     var active = activeTasks();
     var idx = active.findIndex(function(t){ return t.id === id; });
-    dragCtx = { id: id, startY: e.clientY, curIdx: idx, newIdx: idx, rowH: (row.offsetHeight + 8), pointerId: e.pointerId, order: active.map(function(t){ return t.id; }) };
+    var order = active.map(function(t){ return t.id; });
+    // Document-space midpoint of every card, taken before any preview shifts.
+    // Cards vary in height, so the drop position is decided from these rather
+    // than by assuming a uniform row height.
+    var mids = order.map(function(oid){
+      var r = document.querySelector('.dk-row[data-id="' + oid + '"]').getBoundingClientRect();
+      return window.scrollY + r.top + r.height / 2;
+    });
+    var header = document.querySelector('.dk-header').getBoundingClientRect();
+    var addBar = document.querySelector('.dk-add').getBoundingClientRect();
+    dragCtx = {
+      id: id, pointerId: e.pointerId, order: order, mids: mids,
+      curIdx: idx, newIdx: idx,
+      rowH: row.offsetHeight + 8,
+      startY: e.clientY, lastY: e.clientY, startScrollY: window.scrollY,
+      centerDoc: mids[idx],
+      edgeTop: header.bottom, edgeBottom: addBar.top,
+      raf: 0
+    };
     row.classList.add('dragging');
     row.setPointerCapture(e.pointerId);
+    document.addEventListener('touchmove', blockTouchScroll, { passive: false });
     row.addEventListener('pointermove', onDragMove);
     row.addEventListener('pointerup', onDragEnd);
     row.addEventListener('pointercancel', onDragEnd);
+    dragCtx.raf = requestAnimationFrame(autoScrollStep);
   }
 
   function updateGapPreview(){
@@ -535,20 +591,55 @@
 
   function onDragMove(e){
     if(!dragCtx) return;
+    dragCtx.lastY = e.clientY;
+    applyDragPosition();
+  }
+
+  // Keep the card under the finger (allowing for any scrolling since the hold)
+  // and work out where it would land: after every other card whose midpoint is
+  // above the card's centre.
+  function applyDragPosition(){
     var row = document.querySelector('.dk-row[data-id="' + dragCtx.id + '"]');
     if(!row) return;
-    var delta = e.clientY - dragCtx.startY;
+    var delta = (dragCtx.lastY - dragCtx.startY) + (window.scrollY - dragCtx.startScrollY);
     row.style.transform = 'translateY(' + delta + 'px)';
-    var steps = Math.round(delta / dragCtx.rowH);
-    var newIdx = Math.min(dragCtx.order.length - 1, Math.max(0, dragCtx.curIdx + steps));
+    var center = dragCtx.centerDoc + delta;
+    var newIdx = 0;
+    dragCtx.order.forEach(function(oid, i){
+      if(oid !== dragCtx.id && dragCtx.mids[i] < center) newIdx++;
+    });
     if(newIdx !== dragCtx.newIdx){
       dragCtx.newIdx = newIdx;
       updateGapPreview();
     }
   }
 
+  // Holding a card near the top or bottom of the screen scrolls the list, faster
+  // the closer to the edge, so a card can be carried past what's visible.
+  var SCROLL_ZONE = 64;
+  var SCROLL_MAX = 14;
+  function autoScrollStep(){
+    if(!dragCtx) return;
+    var y = dragCtx.lastY;
+    var v = 0;
+    if(y < dragCtx.edgeTop + SCROLL_ZONE) v = -SCROLL_MAX * Math.min(1, (dragCtx.edgeTop + SCROLL_ZONE - y) / SCROLL_ZONE);
+    else if(y > dragCtx.edgeBottom - SCROLL_ZONE) v = SCROLL_MAX * Math.min(1, (y - (dragCtx.edgeBottom - SCROLL_ZONE)) / SCROLL_ZONE);
+    if(v){
+      var before = window.scrollY;
+      window.scrollBy(0, v);
+      if(window.scrollY !== before) applyDragPosition();
+    }
+    dragCtx.raf = requestAnimationFrame(autoScrollStep);
+  }
+
   function onDragEnd(e){
     if(!dragCtx) return;
+    cancelAnimationFrame(dragCtx.raf);
+    document.removeEventListener('touchmove', blockTouchScroll);
+    // The click that follows this pointerup belongs to whatever the hold started
+    // on (✕, checkbox, a tag chip); it must not fire. It arrives within a few ms,
+    // so a short window is enough and won't swallow a genuine next tap.
+    suppressClickUntil = Date.now() + 150;
     clearGapPreview();
     var order = dragCtx.order;
     var newIdx = dragCtx.newIdx;
@@ -661,6 +752,9 @@
     window.addEventListener('resize', fitHeader);
     if(document.fonts && document.fonts.ready) document.fonts.ready.then(fitHeader);
     document.addEventListener('pointerdown', closeEditingIfOutside);
+    document.addEventListener('click', function(e){
+      if(Date.now() < suppressClickUntil){ e.stopPropagation(); e.preventDefault(); }
+    }, true);
     window.addEventListener('online', function(){ refreshStatus(); scheduleSync(0); });
     window.addEventListener('offline', refreshStatus);
     document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') scheduleSync(0); });
