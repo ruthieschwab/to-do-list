@@ -475,7 +475,10 @@
               fired = true;
               clearTimeout(timer);
               cleanup();
-              startDrag(ev, id);
+              // Anchor the drag at the press position, not where the threshold
+              // was crossed, so the card doesn't lag the cursor.
+              startDrag(e, id);
+              onDragMove(ev);
             }
             return;
           }
@@ -528,13 +531,32 @@
     if(!row || dragCtx) return;
     var active = activeTasks();
     var idx = active.findIndex(function(t){ return t.id === id; });
-    dragCtx = { id: id, startY: e.clientY, curIdx: idx, newIdx: idx, rowH: (row.offsetHeight + 8), pointerId: e.pointerId, order: active.map(function(t){ return t.id; }) };
+    var order = active.map(function(t){ return t.id; });
+    // Document-space midpoint of every card, taken before any preview shifts.
+    // Cards vary in height, so the drop position is decided from these rather
+    // than by assuming a uniform row height.
+    var mids = order.map(function(oid){
+      var r = document.querySelector('.dk-row[data-id="' + oid + '"]').getBoundingClientRect();
+      return window.scrollY + r.top + r.height / 2;
+    });
+    var header = document.querySelector('.dk-header').getBoundingClientRect();
+    var addBar = document.querySelector('.dk-add').getBoundingClientRect();
+    dragCtx = {
+      id: id, pointerId: e.pointerId, order: order, mids: mids,
+      curIdx: idx, newIdx: idx,
+      rowH: row.offsetHeight + 8,
+      startY: e.clientY, lastY: e.clientY, startScrollY: window.scrollY,
+      centerDoc: mids[idx],
+      edgeTop: header.bottom, edgeBottom: addBar.top,
+      raf: 0
+    };
     row.classList.add('dragging');
     row.setPointerCapture(e.pointerId);
     document.addEventListener('touchmove', blockTouchScroll, { passive: false });
     row.addEventListener('pointermove', onDragMove);
     row.addEventListener('pointerup', onDragEnd);
     row.addEventListener('pointercancel', onDragEnd);
+    dragCtx.raf = requestAnimationFrame(autoScrollStep);
   }
 
   function updateGapPreview(){
@@ -560,20 +582,50 @@
 
   function onDragMove(e){
     if(!dragCtx) return;
+    dragCtx.lastY = e.clientY;
+    applyDragPosition();
+  }
+
+  // Keep the card under the finger (allowing for any scrolling since the hold)
+  // and work out where it would land: after every other card whose midpoint is
+  // above the card's centre.
+  function applyDragPosition(){
     var row = document.querySelector('.dk-row[data-id="' + dragCtx.id + '"]');
     if(!row) return;
-    var delta = e.clientY - dragCtx.startY;
+    var delta = (dragCtx.lastY - dragCtx.startY) + (window.scrollY - dragCtx.startScrollY);
     row.style.transform = 'translateY(' + delta + 'px)';
-    var steps = Math.round(delta / dragCtx.rowH);
-    var newIdx = Math.min(dragCtx.order.length - 1, Math.max(0, dragCtx.curIdx + steps));
+    var center = dragCtx.centerDoc + delta;
+    var newIdx = 0;
+    dragCtx.order.forEach(function(oid, i){
+      if(oid !== dragCtx.id && dragCtx.mids[i] < center) newIdx++;
+    });
     if(newIdx !== dragCtx.newIdx){
       dragCtx.newIdx = newIdx;
       updateGapPreview();
     }
   }
 
+  // Holding a card near the top or bottom of the screen scrolls the list, faster
+  // the closer to the edge, so a card can be carried past what's visible.
+  var SCROLL_ZONE = 64;
+  var SCROLL_MAX = 14;
+  function autoScrollStep(){
+    if(!dragCtx) return;
+    var y = dragCtx.lastY;
+    var v = 0;
+    if(y < dragCtx.edgeTop + SCROLL_ZONE) v = -SCROLL_MAX * Math.min(1, (dragCtx.edgeTop + SCROLL_ZONE - y) / SCROLL_ZONE);
+    else if(y > dragCtx.edgeBottom - SCROLL_ZONE) v = SCROLL_MAX * Math.min(1, (y - (dragCtx.edgeBottom - SCROLL_ZONE)) / SCROLL_ZONE);
+    if(v){
+      var before = window.scrollY;
+      window.scrollBy(0, v);
+      if(window.scrollY !== before) applyDragPosition();
+    }
+    dragCtx.raf = requestAnimationFrame(autoScrollStep);
+  }
+
   function onDragEnd(e){
     if(!dragCtx) return;
+    cancelAnimationFrame(dragCtx.raf);
     document.removeEventListener('touchmove', blockTouchScroll);
     // The click that follows this pointerup belongs to whatever the hold started
     // on (✕, checkbox, a tag chip); it must not fire. It arrives within a few ms,
