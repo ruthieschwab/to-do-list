@@ -456,9 +456,9 @@
     // MOVE_THRESHOLD also starts a drag right away. A short tap on the title
     // starts editing. A hold that began on a button (✕, checkbox, tag) never
     // fires that button: onDragEnd suppresses the click that follows.
-    var LONG_PRESS_MS = 1000;
+    var LONG_PRESS_MS = 450;  // taps are ~100–200 ms; iOS's own long-press is ~500 ms
     var MOVE_THRESHOLD = 12;
-    var CANCEL_PX = 8;
+    var CANCEL_PX = 15;       // a finger "holding still" drifts a few px; this is about the OS scroll slop
     function isTextEntry(el){
       return !!el.closest('a, textarea, [contenteditable="true"]');
     }

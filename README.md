@@ -1,6 +1,6 @@
 # To Do List
 
-A single-page to-do list that works offline and can sync across devices. Tasks have tags (`#work`, `#fam`, `#house`), an urgent flag, notes, and drag-to-reorder (press and hold a card for a second, then move it; tap a title to edit it and reveal the note/tag controls). Installs to a phone home screen as an app.
+A single-page to-do list that works offline and can sync across devices. Tasks have tags (`#work`, `#fam`, `#house`), an urgent flag, notes, and drag-to-reorder (press and hold a card for about half a second until it lifts, then move it; tap a title to edit it and reveal the note/tag controls). Installs to a phone home screen as an app.
 
 No build step and no dependencies — plain HTML/CSS/JS.
 
