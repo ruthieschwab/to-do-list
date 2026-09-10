@@ -23,7 +23,7 @@ The repo contains **no task data**. A deployed site is a public URL, so data mus
 2. Under **Build and deployment**, set *Source* to **Deploy from a branch**, pick the branch, folder `/ (root)`, and save.
 3. After a minute the site is live at `https://<user>.github.io/to-do-list/`.
 
-Every push to that branch redeploys. The service worker picks up a new version on the next launch after it's published. (GitHub Pages on a *private* repo needs a paid GitHub plan; on a free plan the repo must be public — fine, since it holds only code.)
+Every push to that branch redeploys. **When any app file changes, bump `CACHE` in `sw.js`** — that is what makes installed copies fetch the new version (all files together, then a one-time reload). Without the bump, phones keep serving the old files. (GitHub Pages on a *private* repo needs a paid GitHub plan; on a free plan the repo must be public — fine, since it holds only code.)
 
 ## Install on iPhone
 
