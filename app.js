@@ -38,15 +38,12 @@
   }
   function touch(t){ t.updatedAt = Date.now(); }
 
-  var TAG_RULES = {
-    work: /\b(work|meeting|email|e-mail|project|deadline|client|boss|office|standup|sprint|ticket|jira|slack|invoice|interview|report|presentation|call with|coworker|colleague)\b/i,
-    fam: /\b(family|kid|kids|son|daughter|mom|dad|mother|father|sister|brother|husband|wife|spouse|partner|grandma|grandpa|birthday|daycare|school pickup|anniversary)\b/i,
-    house: /\b(house|home|laundry|dishes|clean|cleaning|grocery|groceries|repair|plumber|rent|mortgage|trash|garbage|yard|lawn|furniture|vacuum|dishwasher|fridge|fix the|straps|highchair|high chair)\b/i
-  };
-  function autoTags(text){
-    var tags = [];
-    Object.keys(TAG_RULES).forEach(function(k){ if(TAG_RULES[k].test(text)) tags.push(k); });
-    return tags;
+  // Tags are suggested from the title (see tags.js), learning from the tasks
+  // already tagged. Suggested tags are re-derived if the title changes, until
+  // the user sets tags on that task by hand.
+  function autoTags(text, exceptId){
+    var examples = liveTasks().filter(function(t){ return t.id !== exceptId; });
+    return window.DocketTags.suggest(text, examples);
   }
 
   function uid(){ return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -296,7 +293,7 @@
       if(!v) return;
       var active = activeTasks();
       var minOrder = active.reduce(function(m,t){ return Math.min(m, t.order||0); }, 0);
-      state.tasks.push({ id: uid(), text: v, notes: '', done: false, order: minOrder - 1, doneAt: 0, tags: autoTags(v), urgent: false, updatedAt: Date.now() });
+      state.tasks.push({ id: uid(), text: v, notes: '', done: false, order: minOrder - 1, doneAt: 0, tags: autoTags(v), tagsAuto: true, urgent: false, updatedAt: Date.now() });
       render();
       save();
       var el = document.getElementById('dk-new');
@@ -366,10 +363,21 @@
         var t = state.tasks.find(function(x){ return x.id === id; });
         if(!t) return;
         var v = el.textContent.trim();
-        if(v && v !== t.text){ t.text = v; touch(t); save(); }
+        if(v && v !== t.text){
+          t.text = v;
+          var retag = t.tagsAuto !== false;
+          if(retag) t.tags = autoTags(v, t.id);
+          touch(t);
+          save();
+          // Refresh the tag chips. Re-rendering right away is safe after Enter; a
+          // blur caused by a tap elsewhere defers it (see closeEditingIfOutside)
+          // so the tap isn't lost to a DOM swap.
+          if(retag){ if(el._enterBlur) render(); else renderPending = true; }
+        }
         else if(!v){ el.textContent = t.text; }
+        el._enterBlur = false;
       });
-      el.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); el.blur(); } });
+      el.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); el._enterBlur = true; el.blur(); } });
     });
 
     document.querySelectorAll('[data-noteflag]').forEach(function(btn){
@@ -408,6 +416,7 @@
         t.tags = t.tags || [];
         var i = t.tags.indexOf(key);
         if(i === -1) t.tags.push(key); else t.tags.splice(i, 1);
+        t.tagsAuto = false; // set by hand from now on; title edits won't re-suggest
         touch(t);
         render();
         save();

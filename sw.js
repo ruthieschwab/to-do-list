@@ -6,12 +6,13 @@
 //     old and new files.
 //   - Google Fonts: cache-first (they never change for a given URL).
 //   - Everything else: network only.
-var CACHE = 'docket-v2';
+var CACHE = 'docket-v3';
 var SHELL = [
   './',
   './index.html',
   './app.js',
   './sync.js',
+  './tags.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
