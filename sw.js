@@ -1,12 +1,16 @@
-// Service worker: makes the app load with no network connection.
-// Strategy:
-//   - App shell (same-origin files): stale-while-revalidate. Serve from cache
-//     immediately, refresh the cache in the background so the next launch gets
-//     any update. Bump CACHE when the shell changes in a way that must not mix
-//     old and new files.
-//   - Google Fonts: cache-first (they never change for a given URL).
-//   - Everything else: network only.
-var CACHE = 'docket-v3';
+// Service worker: makes the app load with no network connection and rolls out
+// updates atomically.
+//
+// The app shell is versioned by CACHE. On install, every shell file is fetched
+// fresh (bypassing the browser's HTTP cache) into a new cache; only once all of
+// them are in does the new worker take over, and the page reloads once so the
+// page and its scripts always come from the same deployment. Files are then
+// served cache-first: no background refresh, so two deployments never mix.
+//
+// ==> Bump CACHE whenever any file in SHELL changes, or the change won't ship. <==
+//
+// Google Fonts are cached on first use (they never change for a given URL).
+var CACHE = 'docket-v4';
 var SHELL = [
   './',
   './index.html',
@@ -21,9 +25,14 @@ var SHELL = [
 
 self.addEventListener('install', function(e){
   e.waitUntil(
-    caches.open(CACHE)
-      .then(function(c){ return c.addAll(SHELL); })
-      .then(function(){ return self.skipWaiting(); })
+    caches.open(CACHE).then(function(c){
+      return Promise.all(SHELL.map(function(url){
+        return fetch(url, { cache: 'reload' }).then(function(res){
+          if(!res.ok) throw new Error('precache failed: ' + url);
+          return c.put(url, res);
+        });
+      }));
+    }).then(function(){ return self.skipWaiting(); })
   );
 });
 
@@ -52,10 +61,8 @@ self.addEventListener('fetch', function(e){
   if(url.origin === self.location.origin){
     e.respondWith(
       caches.match(req, { ignoreSearch: true }).then(function(cached){
-        var network = fetch(req).then(function(res){ return putInCache(req, res); }).catch(function(){ return null; });
-        if(cached){ return cached; }
-        return network.then(function(res){
-          if(res) return res;
+        if(cached) return cached;
+        return fetch(req).then(function(res){ return putInCache(req, res); }).catch(function(){
           // Offline and not cached: for page navigations fall back to the shell.
           if(req.mode === 'navigate') return caches.match('./index.html');
           return Response.error();

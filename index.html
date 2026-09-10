@@ -324,6 +324,13 @@ body {
 <script>
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
+    // When a new version of the app takes over (see sw.js), reload once so the
+    // page and its scripts come from the same deployment. Not on first install.
+    var hadController = !!navigator.serviceWorker.controller;
+    var reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if(hadController && !reloading){ reloading = true; location.reload(); }
+    });
     navigator.serviceWorker.register('./sw.js').catch(function(){});
   });
 }
