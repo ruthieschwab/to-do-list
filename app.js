@@ -561,6 +561,7 @@
       startY: e.clientY, lastY: e.clientY, startScrollY: window.scrollY,
       centerDoc: mids[idx],
       edgeTop: header.bottom, edgeBottom: addBar.top,
+      armed: false,
       raf: 0
     };
     row.classList.add('dragging');
@@ -599,6 +600,10 @@
   function onDragMove(e){
     if(!dragCtx) return;
     dragCtx.lastY = e.clientY;
+    // Auto-scroll only once the card has actually been moved a little. A card
+    // lifted near the top or bottom of the screen must not start scrolling
+    // away under a pointer that hasn't moved yet.
+    if(!dragCtx.armed && Math.abs(e.clientY - dragCtx.startY) > SCROLL_ARM_PX) dragCtx.armed = true;
     applyDragPosition();
   }
 
@@ -624,9 +629,12 @@
   // Holding a card near the top or bottom of the screen scrolls the list, faster
   // the closer to the edge, so a card can be carried past what's visible.
   var SCROLL_ZONE = 64;
-  var SCROLL_MAX = 14;
+  var SCROLL_MAX = 10;
+  var SCROLL_ARM_PX = 24;
   function autoScrollStep(){
     if(!dragCtx) return;
+    dragCtx.raf = requestAnimationFrame(autoScrollStep);
+    if(!dragCtx.armed) return;
     var y = dragCtx.lastY;
     var v = 0;
     if(y < dragCtx.edgeTop + SCROLL_ZONE) v = -SCROLL_MAX * Math.min(1, (dragCtx.edgeTop + SCROLL_ZONE - y) / SCROLL_ZONE);
@@ -636,7 +644,6 @@
       window.scrollBy(0, v);
       if(window.scrollY !== before) applyDragPosition();
     }
-    dragCtx.raf = requestAnimationFrame(autoScrollStep);
   }
 
   function onDragEnd(e){
