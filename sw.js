@@ -10,7 +10,7 @@
 // ==> Bump CACHE whenever any file in SHELL changes, or the change won't ship. <==
 //
 // Google Fonts are cached on first use (they never change for a given URL).
-var CACHE = 'docket-v6';
+var CACHE = 'docket-v7';
 var SHELL = [
   './',
   './index.html',
