@@ -516,14 +516,18 @@
             }
           }
         }
+        // Listen on the document, not the row: with a mouse the button can be
+        // released with the cursor just outside the card (a tiny slip), and a
+        // release the row never saw would leave the hold timer running — the
+        // card would then lift with no button down and follow the cursor.
         function cleanup(){
-          row.removeEventListener('pointermove', onMove);
-          row.removeEventListener('pointerup', onUp);
-          row.removeEventListener('pointercancel', onUp);
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+          document.removeEventListener('pointercancel', onUp);
         }
-        row.addEventListener('pointermove', onMove);
-        row.addEventListener('pointerup', onUp);
-        row.addEventListener('pointercancel', onUp);
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+        document.addEventListener('pointercancel', onUp);
       });
     });
   }
@@ -560,11 +564,14 @@
       raf: 0
     };
     row.classList.add('dragging');
-    row.setPointerCapture(e.pointerId);
+    try { row.setPointerCapture(e.pointerId); } catch(err){}
     document.addEventListener('touchmove', blockTouchScroll, { passive: false });
     row.addEventListener('pointermove', onDragMove);
     row.addEventListener('pointerup', onDragEnd);
     row.addEventListener('pointercancel', onDragEnd);
+    // Safety net: any release anywhere ends the drag, even if capture was lost.
+    document.addEventListener('pointerup', onDragEnd);
+    document.addEventListener('pointercancel', onDragEnd);
     dragCtx.raf = requestAnimationFrame(autoScrollStep);
   }
 
@@ -636,6 +643,8 @@
     if(!dragCtx) return;
     cancelAnimationFrame(dragCtx.raf);
     document.removeEventListener('touchmove', blockTouchScroll);
+    document.removeEventListener('pointerup', onDragEnd);
+    document.removeEventListener('pointercancel', onDragEnd);
     // The click that follows this pointerup belongs to whatever the hold started
     // on (✕, checkbox, a tag chip); it must not fire. It arrives within a few ms,
     // so a short window is enough and won't swallow a genuine next tap.
