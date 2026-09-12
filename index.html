@@ -170,6 +170,7 @@ body {
 
 .dk-list { list-style: none; margin: 8px 0 0; padding: 0 10px; }
 .dk-row {
+  position: relative; /* so the lifted card's z-index applies and it paints above the cards it passes */
   display: flex; align-items: flex-start; gap: 10px;
   background: var(--surface);
   border: 1px solid var(--line);
