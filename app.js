@@ -567,10 +567,10 @@
     row.classList.add('dragging');
     try { row.setPointerCapture(e.pointerId); } catch(err){}
     document.addEventListener('touchmove', blockTouchScroll, { passive: false });
-    row.addEventListener('pointermove', onDragMove);
-    row.addEventListener('pointerup', onDragEnd);
-    row.addEventListener('pointercancel', onDragEnd);
-    // Safety net: any release anywhere ends the drag, even if capture was lost.
+    // Track the drag on the document, not the row: it then works even if the
+    // browser declined pointer capture or the cursor leaves the card, and any
+    // release anywhere ends it.
+    document.addEventListener('pointermove', onDragMove);
     document.addEventListener('pointerup', onDragEnd);
     document.addEventListener('pointercancel', onDragEnd);
     dragCtx.raf = requestAnimationFrame(autoScrollStep);
@@ -650,6 +650,7 @@
     if(!dragCtx) return;
     cancelAnimationFrame(dragCtx.raf);
     document.removeEventListener('touchmove', blockTouchScroll);
+    document.removeEventListener('pointermove', onDragMove);
     document.removeEventListener('pointerup', onDragEnd);
     document.removeEventListener('pointercancel', onDragEnd);
     // The click that follows this pointerup belongs to whatever the hold started
