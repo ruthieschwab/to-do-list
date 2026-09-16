@@ -59,16 +59,35 @@
 
   function esc(s){ return (s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
+  // Turn URLs, www. addresses, email addresses and phone numbers into links.
+  // Groups: 1 http(s) URL, 2 www. address, 3 email, 4 phone (North American
+  // shapes, optional country code), 5 international phone starting with +.
+  var LINK_RE = /(https?:\/\/[^\s<]+)|(\bwww\.[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)|((?:\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d))|(\+\d[\d\s().-]{6,}\d)/g;
   function linkify(text){
-    var re = /(https?:\/\/[^\s<]+)/g;
+    text = text || '';
     var out = '', last = 0, m;
-    while((m = re.exec(text))){
+    LINK_RE.lastIndex = 0;
+    while((m = LINK_RE.exec(text))){
+      var raw = m[0], href = '', label = raw, trail = '';
+      var before = m.index > 0 ? text.charAt(m.index - 1) : '';
+      if(m[1] || m[2]){
+        label = raw.replace(/[),.;:!?]+$/, function(t){ trail = t; return ''; });
+        href = m[1] ? label : 'http://' + label;
+      } else if(m[3]){
+        label = raw.replace(/[.,;:!?]+$/, function(t){ trail = t; return ''; });
+        href = 'mailto:' + label;
+      } else if(!/[\w#$]/.test(before)){
+        // A phone number, unless it's glued to a preceding word, digit or #tag.
+        href = 'tel:' + (raw.charAt(0) === '+' ? '+' : '') + raw.replace(/\D/g, '');
+      }
       out += esc(text.slice(last, m.index));
-      var url = m[0];
-      var trail = '';
-      var clean = url.replace(/[),.;:!?]+$/, function(t){ trail = t; return ''; });
-      out += '<a href="' + esc(clean) + '" target="_blank" rel="noopener noreferrer">' + esc(clean) + '</a>' + esc(trail);
-      last = m.index + url.length;
+      if(href){
+        var ext = /^https?:/.test(href) ? ' target="_blank" rel="noopener noreferrer"' : '';
+        out += '<a href="' + esc(href) + '"' + ext + '>' + esc(label) + '</a>' + esc(trail);
+      } else {
+        out += esc(raw);
+      }
+      last = m.index + raw.length;
     }
     out += esc(text.slice(last));
     return out;
@@ -150,7 +169,8 @@
         '<div class="dk-text" data-edit="' + t.id + '" contenteditable="false" spellcheck="false">' + linkify(t.text) + '</div>' +
         '<div class="dk-extras">' +
           (notesOpen ? '<textarea class="dk-notes" data-notes="' + t.id + '" placeholder="Add a note…">' + esc(t.notes) + '</textarea>'
-                     : '<button class="dk-noteflag' + (t.notes ? ' has' : '') + '" data-noteflag="' + t.id + '">' + (t.notes ? '📝 has a note' : '+ note') + '</button>') +
+           : t.notes ? '<div class="dk-note" data-noteflag="' + t.id + '" title="Tap to edit">' + linkify(t.notes) + '</div>'
+                     : '<button class="dk-noteflag" data-noteflag="' + t.id + '">+ note</button>') +
           '<div class="dk-tags">' +
             '<button class="dk-urgent' + (t.urgent ? ' on' : '') + '" data-urgent="' + t.id + '">' + (t.urgent ? '⏰ urgent' : '+ urgent') + '</button>' +
             tagChip(t,'work','work') + tagChip(t,'fam','fam') + tagChip(t,'house','house') +
@@ -381,7 +401,8 @@
     });
 
     document.querySelectorAll('[data-noteflag]').forEach(function(btn){
-      btn.addEventListener('click', function(){
+      btn.addEventListener('click', function(e){
+        if(e.target.closest('a')) return; // a link inside the note: let it open, don't start editing
         var id = btn.getAttribute('data-noteflag');
         var t = state.tasks.find(function(x){ return x.id === id; });
         if(!t) return;
