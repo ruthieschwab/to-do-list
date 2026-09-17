@@ -13,11 +13,12 @@
 //
 // No DOM access. suggest(text, examples) → array of tag keys.
 (function(){
-  var TAGS = ['work', 'fam', 'house'];
+  var TAGS = ['work', 'fam', 'house', 'punch'];
   var RULES = {
     work: /\b(work|meeting|email|e-mail|project|deadline|client|boss|office|standup|sprint|ticket|jira|slack|invoice|interview|report|presentation|call with|coworker|colleague|resume|linkedin|recruiter|apply|application|job|jobs)\b/i,
     fam: /\b(family|kid|kids|son|daughter|mom|dad|mother|father|sister|brother|husband|wife|spouse|partner|grandma|grandpa|birthday|bday|daycare|school|anniversary|pediatrician)\b/i,
-    house: /\b(house|home|laundry|dishes|clean|cleaning|grocery|groceries|repair|plumber|electrician|contractor|rent|mortgage|trash|garbage|yard|lawn|furniture|vacuum|dishwasher|fridge|fix the|kitchen|bathroom|garage|roof|gutter|paint|painting|window|windows|door|floor|floors)\b/i
+    house: /\b(house|home|laundry|dishes|clean|cleaning|grocery|groceries|repair|plumber|electrician|contractor|rent|mortgage|trash|garbage|yard|lawn|furniture|vacuum|dishwasher|fridge|fix the|kitchen|bathroom|garage|roof|gutter|paint|painting|window|windows|door|floor|floors)\b/i,
+    punch: /\b(punch ?list|inspection|walk-?through|contractor|caulk|regrout|drywall)\b/i
   };
   var STOP = {};
   ('the and for with from that this into out re up on in of to at by or an a is are be as it its w vs via per about after before over under ' +

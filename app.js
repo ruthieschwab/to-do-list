@@ -173,7 +173,7 @@
                      : '<button class="dk-noteflag" data-noteflag="' + t.id + '">+ note</button>') +
           '<div class="dk-tags">' +
             '<button class="dk-urgent' + (t.urgent ? ' on' : '') + '" data-urgent="' + t.id + '">' + (t.urgent ? '⏰ urgent' : '+ urgent') + '</button>' +
-            tagChip(t,'work','work') + tagChip(t,'fam','fam') + tagChip(t,'house','house') +
+            tagChip(t,'work','work') + tagChip(t,'fam','fam') + tagChip(t,'house','house') + tagChip(t,'punch','punchlist') +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -189,8 +189,44 @@
     return '<button class="dk-filter' + (view === key ? ' active' : '') + '" data-view="' + key + '">' + label + ' (' + count + ')</button>';
   }
 
+  var TAG_LABELS = { work: '#work', fam: '#fam', house: '#house', punch: '#punchlist' };
   function filterLabel(){
-    return filterTag === 'urgent' ? 'urgent' : '#' + filterTag;
+    return filterTag === 'urgent' ? 'urgent' : (TAG_LABELS[filterTag] || '#' + filterTag);
+  }
+
+  // The tasks currently shown, as plain text: a heading line, then one task per
+  // line (its note after a dash), for pasting into a message or email.
+  function listAsText(){
+    var tasks = view === 'done' ? doneTasks() : activeTasks();
+    var heading = (filterTag ? filterLabel() : 'To do') + (view === 'done' ? ' (done)' : '') +
+      ' — ' + tasks.length + (tasks.length === 1 ? ' task' : ' tasks');
+    return [heading].concat(tasks.map(function(t){
+      return '- ' + t.text + (t.notes ? ' — ' + t.notes.trim().replace(/\s*\n+\s*/g, '; ') : '');
+    })).join('\n');
+  }
+
+  function copyText(text){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      return navigator.clipboard.writeText(text).then(function(){ return true; }, function(){ return legacyCopy(text); });
+    }
+    return Promise.resolve(legacyCopy(text));
+  }
+  function legacyCopy(text){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch(e){}
+    ta.remove();
+    return ok;
+  }
+  function flashLabel(btn, text){
+    var orig = btn.textContent;
+    btn.textContent = text;
+    setTimeout(function(){ if(btn.isConnected) btn.textContent = orig; }, 1500);
   }
 
   function render(){
@@ -203,7 +239,11 @@
               '<span class="dk-sync' + (statusBad() ? ' offline' : '') + '" id="dk-sync"><span class="dot"></span><span id="dk-synctime">' + statusText() + '</span></span>' +
             '</div></div>';
     html += '<div class="dk-filterbar">' + viewBtn('active', 'Active', active.length) + viewBtn('done', 'Done', done.length) + '</div>';
-    html += '<div class="dk-filterbar">' + filterBtn('', 'All') + filterBtn('urgent', '⏰ urgent') + filterBtn('work', '#work') + filterBtn('fam', '#fam') + filterBtn('house', '#house') + '</div>';
+    html += '<div class="dk-filterbar">' + filterBtn('', 'All') + filterBtn('urgent', '⏰ urgent') + filterBtn('work', '#work') + filterBtn('fam', '#fam') + filterBtn('house', '#house') + filterBtn('punch', '#punchlist') +
+            '<span class="dk-tools">' +
+              '<button class="dk-filter dk-tool" id="dk-copy" title="Copy the tasks shown, one per line">copy</button>' +
+              (navigator.share ? '<button class="dk-filter dk-tool" id="dk-share" title="Share the tasks shown">share</button>' : '') +
+            '</span></div>';
     html += '</div>';
     html += '<div class="dk-add"><input type="text" id="dk-new" placeholder="Add a task…" autocomplete="off"><button id="dk-addbtn">Add</button></div>';
     if(view === 'done'){
@@ -323,6 +363,15 @@
     addInput.addEventListener('keydown', function(e){ if(e.key === 'Enter') doAdd(); });
 
     document.getElementById('dk-export').addEventListener('click', exportBackup);
+
+    var copyBtn = document.getElementById('dk-copy');
+    copyBtn.addEventListener('click', function(){
+      copyText(listAsText()).then(function(ok){ flashLabel(copyBtn, ok ? 'copied ✓' : "couldn't copy"); });
+    });
+    var shareBtn = document.getElementById('dk-share');
+    if(shareBtn) shareBtn.addEventListener('click', function(){
+      navigator.share({ text: listAsText() }).catch(function(){});
+    });
     var importFile = document.getElementById('dk-importfile');
     document.getElementById('dk-import').addEventListener('click', function(){ importFile.click(); });
     importFile.addEventListener('change', function(){
