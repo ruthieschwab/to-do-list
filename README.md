@@ -1,6 +1,6 @@
 # To Do List
 
-A single-page to-do list that works offline and can sync across devices. Tasks have tags (`#work`, `#fam`, `#house`), an urgent flag, notes, and drag-to-reorder (press and hold a card for about half a second until it lifts, then move it; tap a title to edit it and reveal the note/tag controls). Installs to a phone home screen as an app.
+A single-page to-do list that works offline and can sync across devices. Tasks have tags (`#work`, `#fam`, `#house`, `#punchlist`), an urgent flag, notes, and drag-to-reorder (press and hold a card for about half a second until it lifts, then move it; tap a title to edit it and reveal the note/tag controls). Installs to a phone home screen as an app.
 
 No build step and no dependencies — plain HTML/CSS/JS.
 
@@ -41,6 +41,10 @@ The first device to connect creates the gist and uploads its list. Later devices
 How conflicts resolve: each task carries an `updatedAt` timestamp and the newer copy of a task wins; deletions are kept as tombstones for 90 days so they propagate. Editing the *same* task on two offline devices keeps whichever edit was made later.
 
 The token is stored only in that device's browser storage, never in the repo. **Disconnect** in the sync panel forgets it (the local list stays).
+
+## Sharing a list
+
+The **copy** and **share** buttons at the right of the tag filters act on whatever is currently shown. Filter by a tag (say `#punchlist`), tap **copy**, and the clipboard holds a heading line plus one task per line — the note, if any, after a dash — ready to paste into a message or email. **share** (phones and browsers that support it) opens the system share sheet with the same text.
 
 ## Backups
 
