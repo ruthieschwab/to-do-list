@@ -155,9 +155,12 @@
       '<p class="dk-panelmsg" id="dk-syncmsg">' + esc(panelMessage()) + '</p>';
   }
 
-  function tagChip(t, key, label){
+  // Tags show as emoji on screen (compact); copied/shared text uses the word labels.
+  var TAG_EMOJI = { work: '👩🏻‍💻', fam: '🧑‍🧑‍🧒‍🧒', house: '🏡', punch: '🛠️' };
+  var TAG_LABELS = { work: '#work', fam: '#fam', house: '#house', punch: '#punchlist' };
+  function tagChip(t, key){
     var on = (t.tags||[]).indexOf(key) !== -1;
-    return '<button class="dk-tag' + (on ? ' on' : '') + '" data-tagtoggle="' + t.id + '" data-tagkey="' + key + '">#' + label + '</button>';
+    return '<button class="dk-tag' + (on ? ' on' : '') + '" data-tagtoggle="' + t.id + '" data-tagkey="' + key + '" title="' + TAG_LABELS[key] + '" aria-label="' + TAG_LABELS[key] + '">' + TAG_EMOJI[key] + '</button>';
   }
 
   function rowHTML(t){
@@ -173,7 +176,7 @@
                      : '<button class="dk-noteflag" data-noteflag="' + t.id + '">+ note</button>') +
           '<div class="dk-tags">' +
             '<button class="dk-urgent' + (t.urgent ? ' on' : '') + '" data-urgent="' + t.id + '">' + (t.urgent ? '⏰ urgent' : '+ urgent') + '</button>' +
-            tagChip(t,'work','work') + tagChip(t,'fam','fam') + tagChip(t,'house','house') + tagChip(t,'punch','punchlist') +
+            tagChip(t,'work') + tagChip(t,'fam') + tagChip(t,'house') + tagChip(t,'punch') +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -189,7 +192,6 @@
     return '<button class="dk-filter' + (view === key ? ' active' : '') + '" data-view="' + key + '">' + label + ' (' + count + ')</button>';
   }
 
-  var TAG_LABELS = { work: '#work', fam: '#fam', house: '#house', punch: '#punchlist' };
   function filterLabel(){
     return filterTag === 'urgent' ? 'urgent' : (TAG_LABELS[filterTag] || '#' + filterTag);
   }
@@ -224,9 +226,9 @@
     return ok;
   }
   function flashLabel(btn, text){
-    var orig = btn.textContent;
+    var orig = btn.innerHTML;
     btn.textContent = text;
-    setTimeout(function(){ if(btn.isConnected) btn.textContent = orig; }, 1500);
+    setTimeout(function(){ if(btn.isConnected) btn.innerHTML = orig; }, 1500);
   }
 
   function render(){
@@ -239,10 +241,17 @@
               '<span class="dk-sync' + (statusBad() ? ' offline' : '') + '" id="dk-sync"><span class="dot"></span><span id="dk-synctime">' + statusText() + '</span></span>' +
             '</div></div>';
     html += '<div class="dk-filterbar">' + viewBtn('active', 'Active', active.length) + viewBtn('done', 'Done', done.length) + '</div>';
-    html += '<div class="dk-filterbar">' + filterBtn('', 'All') + filterBtn('urgent', '⏰ urgent') + filterBtn('work', '#work') + filterBtn('fam', '#fam') + filterBtn('house', '#house') + filterBtn('punch', '#punchlist') +
+    html += '<div class="dk-filterbar">' + filterBtn('', 'All') + filterBtn('urgent', '⏰') +
+            ['work', 'fam', 'house', 'punch'].map(function(k){
+              return '<button class="dk-filter' + (filterTag === k ? ' active' : '') + '" data-filter="' + k + '" title="' + TAG_LABELS[k] + '" aria-label="' + TAG_LABELS[k] + '">' + TAG_EMOJI[k] + '</button>';
+            }).join('') +
             '<span class="dk-tools">' +
-              '<button class="dk-filter dk-tool" id="dk-copy" title="Copy the tasks shown, one per line">copy</button>' +
-              (navigator.share ? '<button class="dk-filter dk-tool" id="dk-share" title="Share the tasks shown">share</button>' : '') +
+              '<button class="dk-filter dk-tool" id="dk-share" title="' + (navigator.share ? 'Share the tasks shown' : 'Copy the tasks shown, one per line') + '" aria-label="Share">' +
+                '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+                  '<path d="M8 9H6.5A1.5 1.5 0 0 0 5 10.5v9A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 17.5 9H16"/>' +
+                  '<path d="M12 15V3M8.5 6.5 12 3l3.5 3.5"/>' +
+                '</svg>' +
+              '</button>' +
             '</span></div>';
     html += '</div>';
     html += '<div class="dk-add"><input type="text" id="dk-new" placeholder="Add a task…" autocomplete="off"><button id="dk-addbtn">Add</button></div>';
@@ -364,13 +373,12 @@
 
     document.getElementById('dk-export').addEventListener('click', exportBackup);
 
-    var copyBtn = document.getElementById('dk-copy');
-    copyBtn.addEventListener('click', function(){
-      copyText(listAsText()).then(function(ok){ flashLabel(copyBtn, ok ? 'copied ✓' : "couldn't copy"); });
-    });
+    // Share sheet where there is one (phones); otherwise copy to the clipboard.
     var shareBtn = document.getElementById('dk-share');
-    if(shareBtn) shareBtn.addEventListener('click', function(){
-      navigator.share({ text: listAsText() }).catch(function(){});
+    shareBtn.addEventListener('click', function(){
+      var text = listAsText();
+      if(navigator.share){ navigator.share({ text: text }).catch(function(){}); return; }
+      copyText(text).then(function(ok){ flashLabel(shareBtn, ok ? 'copied ✓' : "couldn't copy"); });
     });
     var importFile = document.getElementById('dk-importfile');
     document.getElementById('dk-import').addEventListener('click', function(){ importFile.click(); });
