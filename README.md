@@ -1,6 +1,6 @@
 # To Do List
 
-A single-page to-do list that works offline and can sync across devices. Tasks have tags (`#work`, `#fam`, `#house`, `#punchlist`), an urgent flag, notes, and drag-to-reorder (press and hold a card for about half a second until it lifts, then move it; tap a title to edit it and reveal the note/tag controls). Installs to a phone home screen as an app.
+A single-page to-do list that works offline and can sync across devices. Tasks have tags (👩🏻‍💻 work, 🧑‍🧑‍🧒‍🧒 family, 🏡 house, 🛠️ punch list — shown as emoji, with the word on hover), an urgent flag, notes, and drag-to-reorder (press and hold a card for about half a second until it lifts, then move it; tap a title to edit it and reveal the note/tag controls). Installs to a phone home screen as an app.
 
 No build step and no dependencies — plain HTML/CSS/JS.
 
@@ -44,7 +44,7 @@ The token is stored only in that device's browser storage, never in the repo. **
 
 ## Sharing a list
 
-The **copy** and **share** buttons at the right of the tag filters act on whatever is currently shown. Filter by a tag (say `#punchlist`), tap **copy**, and the clipboard holds a heading line plus one task per line — the note, if any, after a dash — ready to paste into a message or email. **share** (phones and browsers that support it) opens the system share sheet with the same text.
+The share button (the box-with-arrow icon at the right of the tag filters) acts on whatever is currently shown. Filter by a tag (say 🛠️), tap it, and the system share sheet opens with a heading line plus one task per line — the note, if any, after a dash — ready for Messages or Mail. On a desktop browser without a share sheet the same text is copied to the clipboard instead.
 
 ## Backups
 

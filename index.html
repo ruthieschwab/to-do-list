@@ -130,7 +130,8 @@ body {
 }
 .dk-filter.active { border-color: var(--ink); color: var(--accent-ink); background: var(--ink); font-weight: 500; }
 .dk-tools { margin-left: auto; display: inline-flex; gap: 6px; }
-.dk-tool { color: var(--accent); border-style: dashed; }
+.dk-tool { color: var(--accent); display: inline-flex; align-items: center; padding: 4px 8px; }
+.dk-tool svg { display: block; }
 .dk-filter[data-filter="urgent"].active { border-color: var(--urgent-border); color: var(--danger); background: var(--urgent-bg); }
 
 .dk-add {
