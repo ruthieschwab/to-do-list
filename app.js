@@ -175,7 +175,7 @@
            : t.notes ? '<div class="dk-note" data-noteflag="' + t.id + '" title="Tap to edit">' + linkify(t.notes) + '</div>'
                      : '<button class="dk-noteflag" data-noteflag="' + t.id + '">+ note</button>') +
           '<div class="dk-tags">' +
-            '<button class="dk-urgent' + (t.urgent ? ' on' : '') + '" data-urgent="' + t.id + '">' + (t.urgent ? '⏰ urgent' : '+ urgent') + '</button>' +
+            '<button class="dk-urgent' + (t.urgent ? ' on' : '') + '" data-urgent="' + t.id + '" title="urgent" aria-label="urgent">⏰</button>' +
             tagChip(t,'work') + tagChip(t,'fam') + tagChip(t,'house') + tagChip(t,'punch') +
           '</div>' +
         '</div>' +
