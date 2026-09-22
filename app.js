@@ -21,21 +21,11 @@
   var renderPending = false;
   // Tag filter: which tag keys are selected ('none' = untagged tasks). All
   // selected = "All". A task shows if any of its tags is selected. Urgent is a
-  // separate on/off filter on top. Persisted so the view survives a relaunch.
+  // separate on/off filter on top. Every launch starts at All.
   var FILTER_KEYS = ['work', 'fam', 'house', 'punch', 'none'];
-  var FILTER_KEY = 'docket.filter.v1';
-  var filterSet = loadFilter();
+  var filterSet = FILTER_KEYS.slice();
   var filterUrgent = false;
-  function loadFilter(){
-    try {
-      var f = JSON.parse(localStorage.getItem(FILTER_KEY));
-      if(f && Array.isArray(f.tags)){ filterUrgent = !!f.urgent; return f.tags.filter(function(k){ return FILTER_KEYS.indexOf(k) !== -1; }); }
-    } catch(e){}
-    return FILTER_KEYS.slice();
-  }
-  function saveFilter(){
-    try { localStorage.setItem(FILTER_KEY, JSON.stringify({ tags: filterSet, urgent: filterUrgent })); } catch(e){}
-  }
+  try { localStorage.removeItem('docket.filter.v1'); } catch(e){} // left by an earlier version
   function allSelected(){ return filterSet.length === FILTER_KEYS.length; }
   var view = 'active';
   var tickTimer = null;
@@ -437,7 +427,6 @@
           var i = filterSet.indexOf(k);
           if(i === -1) filterSet.push(k); else filterSet.splice(i, 1);
         }
-        saveFilter();
         render();
       });
     });
