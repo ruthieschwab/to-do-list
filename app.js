@@ -19,7 +19,24 @@
   var dragCtx = null;
   var editingId = null;
   var renderPending = false;
-  var filterTag = '';
+  // Tag filter: which tag keys are selected ('none' = untagged tasks). All
+  // selected = "All". A task shows if any of its tags is selected. Urgent is a
+  // separate on/off filter on top. Persisted so the view survives a relaunch.
+  var FILTER_KEYS = ['work', 'fam', 'house', 'punch', 'none'];
+  var FILTER_KEY = 'docket.filter.v1';
+  var filterSet = loadFilter();
+  var filterUrgent = false;
+  function loadFilter(){
+    try {
+      var f = JSON.parse(localStorage.getItem(FILTER_KEY));
+      if(f && Array.isArray(f.tags)){ filterUrgent = !!f.urgent; return f.tags.filter(function(k){ return FILTER_KEYS.indexOf(k) !== -1; }); }
+    } catch(e){}
+    return FILTER_KEYS.slice();
+  }
+  function saveFilter(){
+    try { localStorage.setItem(FILTER_KEY, JSON.stringify({ tags: filterSet, urgent: filterUrgent })); } catch(e){}
+  }
+  function allSelected(){ return filterSet.length === FILTER_KEYS.length; }
   var view = 'active';
   var tickTimer = null;
   var syncPanelOpen = false;
@@ -49,9 +66,10 @@
   function uid(){ return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
   function matchesFilter(t){
-    if(!filterTag) return true;
-    if(filterTag === 'urgent') return !!t.urgent;
-    return (t.tags||[]).indexOf(filterTag) !== -1;
+    if(filterUrgent && !t.urgent) return false;
+    var tags = t.tags || [];
+    if(!tags.length) return filterSet.indexOf('none') !== -1;
+    return tags.some(function(k){ return filterSet.indexOf(k) !== -1; });
   }
   function liveTasks(){ return state.tasks.filter(function(t){ return !t.deleted; }); }
   function activeTasks(){ return liveTasks().filter(function(t){ return !t.done && matchesFilter(t); }).sort(function(a,b){ return a.order - b.order; }); }
@@ -156,8 +174,8 @@
   }
 
   // Tags show as emoji on screen (compact); copied/shared text uses the word labels.
-  var TAG_EMOJI = { work: '👩🏻‍💻', fam: '🧑‍🧑‍🧒‍🧒', house: '🏡', punch: '🛠️' };
-  var TAG_LABELS = { work: '#work', fam: '#fam', house: '#house', punch: '#punchlist' };
+  var TAG_EMOJI = { work: '👩🏻‍💻', fam: '🧑‍🧑‍🧒‍🧒', house: '🏡', punch: '🛠️', none: '🚫' };
+  var TAG_LABELS = { work: '#work', fam: '#fam', house: '#house', punch: '#punchlist', none: 'untagged' };
   function tagChip(t, key){
     var on = (t.tags||[]).indexOf(key) !== -1;
     return '<button class="dk-tag' + (on ? ' on' : '') + '" data-tagtoggle="' + t.id + '" data-tagkey="' + key + '" title="' + TAG_LABELS[key] + '" aria-label="' + TAG_LABELS[key] + '">' + TAG_EMOJI[key] + '</button>';
@@ -184,23 +202,24 @@
     '</li>';
   }
 
-  function filterBtn(key, label){
-    return '<button class="dk-filter' + (filterTag === key ? ' active' : '') + '" data-filter="' + key + '">' + label + '</button>';
-  }
 
   function viewBtn(key, label, count){
     return '<button class="dk-filter' + (view === key ? ' active' : '') + '" data-view="' + key + '">' + label + ' (' + count + ')</button>';
   }
 
+  function filterNarrowed(){ return filterUrgent || !allSelected(); }
   function filterLabel(){
-    return filterTag === 'urgent' ? 'urgent' : (TAG_LABELS[filterTag] || '#' + filterTag);
+    var parts = [];
+    if(filterUrgent) parts.push('urgent');
+    if(!allSelected()) parts.push(filterSet.length ? filterSet.map(function(k){ return TAG_LABELS[k]; }).join(' ') : 'no tags');
+    return parts.join(' · ');
   }
 
   // The tasks currently shown, as plain text: a heading line, then one task per
   // line (its note after a dash), for pasting into a message or email.
   function listAsText(){
     var tasks = view === 'done' ? doneTasks() : activeTasks();
-    var heading = (filterTag ? filterLabel() : 'To do') + (view === 'done' ? ' (done)' : '') +
+    var heading = (filterNarrowed() ? filterLabel() : 'To do') + (view === 'done' ? ' (done)' : '') +
       ' — ' + tasks.length + (tasks.length === 1 ? ' task' : ' tasks');
     return [heading].concat(tasks.map(function(t){
       return '- ' + t.text + (t.notes ? ' — ' + t.notes.trim().replace(/\s*\n+\s*/g, '; ') : '');
@@ -241,9 +260,12 @@
               '<span class="dk-sync' + (statusBad() ? ' offline' : '') + '" id="dk-sync"><span class="dot"></span><span id="dk-synctime">' + statusText() + '</span></span>' +
             '</div></div>';
     html += '<div class="dk-filterbar">' + viewBtn('active', 'Active', active.length) + viewBtn('done', 'Done', done.length) + '</div>';
-    html += '<div class="dk-filterbar">' + filterBtn('', 'All') + filterBtn('urgent', '⏰') +
-            ['work', 'fam', 'house', 'punch'].map(function(k){
-              return '<button class="dk-filter' + (filterTag === k ? ' active' : '') + '" data-filter="' + k + '" title="' + TAG_LABELS[k] + '" aria-label="' + TAG_LABELS[k] + '">' + TAG_EMOJI[k] + '</button>';
+    html += '<div class="dk-filterbar">' +
+            '<button class="dk-filter' + (allSelected() ? ' active' : '') + '" data-filter="all" title="Show every tag" aria-pressed="' + allSelected() + '">All</button>' +
+            '<button class="dk-filter' + (filterUrgent ? ' active' : '') + '" data-filter="urgent" title="Only urgent" aria-label="urgent" aria-pressed="' + filterUrgent + '">⏰</button>' +
+            FILTER_KEYS.map(function(k){
+              var on = filterSet.indexOf(k) !== -1;
+              return '<button class="dk-filter' + (on ? ' active' : '') + '" data-filter="' + k + '" title="' + TAG_LABELS[k] + '" aria-label="' + TAG_LABELS[k] + '" aria-pressed="' + on + '">' + TAG_EMOJI[k] + '</button>';
             }).join('') +
             '<span class="dk-tools">' +
               '<button class="dk-filter dk-tool" id="dk-share" title="' + (navigator.share ? 'Share the tasks shown' : 'Copy the tasks shown, one per line') + '" aria-label="Share">' +
@@ -257,13 +279,13 @@
     html += '<div class="dk-add"><input type="text" id="dk-new" placeholder="Add a task…" autocomplete="off"><button id="dk-addbtn">Add</button></div>';
     if(view === 'done'){
       if(done.length === 0){
-        html += '<div class="dk-empty">' + (filterTag ? 'Nothing done tagged ' + filterLabel() + '.' : 'Nothing done yet.') + '</div>';
+        html += '<div class="dk-empty">' + (filterNarrowed() ? 'Nothing done matches ' + filterLabel() + '.' : 'Nothing done yet.') + '</div>';
       } else {
         html += '<ul class="dk-list">' + done.map(rowHTML).join('') + '</ul>';
       }
     } else {
       if(active.length === 0){
-        html += '<div class="dk-empty">' + (filterTag ? 'Nothing tagged ' + filterLabel() + '.' : 'Nothing on the list yet.') + '</div>';
+        html += '<div class="dk-empty">' + (filterNarrowed() ? 'Nothing matches ' + filterLabel() + '.' : 'Nothing on the list yet.') + '</div>';
       } else {
         html += '<ul class="dk-list" id="dk-active">' + active.map(rowHTML).join('') + '</ul>';
       }
@@ -408,7 +430,14 @@
 
     document.querySelectorAll('[data-filter]').forEach(function(btn){
       btn.addEventListener('click', function(){
-        filterTag = btn.getAttribute('data-filter');
+        var k = btn.getAttribute('data-filter');
+        if(k === 'all'){ filterSet = allSelected() ? [] : FILTER_KEYS.slice(); }
+        else if(k === 'urgent'){ filterUrgent = !filterUrgent; }
+        else {
+          var i = filterSet.indexOf(k);
+          if(i === -1) filterSet.push(k); else filterSet.splice(i, 1);
+        }
+        saveFilter();
         render();
       });
     });
