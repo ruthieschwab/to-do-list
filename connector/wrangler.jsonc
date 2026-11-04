@@ -1,0 +1,31 @@
+/**
+ * Cloudflare Worker config for the To Do List connector.
+ * Setup steps are in README.md in this folder.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "todo-connector",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    // The address Claude connects to. Every sign-in is bound to it.
+    // (.dev.vars overrides it with http://localhost:8788/mcp for local testing.)
+    "MCP_RESOURCE": "https://todo-connector.ruthieschwab.workers.dev/mcp",
+    // The one GitHub account allowed to sign in.
+    "ALLOWED_GITHUB_LOGIN": "ruthieschwab"
+  },
+  // Secrets (set with `npx wrangler secret put NAME`, never written here):
+  // GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, COOKIE_ENCRYPTION_KEY
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "<KV namespace id from: npx wrangler kv namespace create OAUTH_KV>"
+    }
+  ],
+  "observability": { "enabled": true },
+  "dev": { "port": 8788 },
+  "secrets": {
+    "required": ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "COOKIE_ENCRYPTION_KEY"]
+  }
+}
