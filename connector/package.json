@@ -1,0 +1,25 @@
+{
+	"name": "todo-connector",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"cf-typegen": "wrangler types",
+		"type-check": "tsc --noEmit",
+		"test": "node --test test/todo.test.js"
+	},
+	"dependencies": {
+		"@cloudflare/workers-oauth-provider": "^1.2.4",
+		"@modelcontextprotocol/server": "2.3.1",
+		"agents": "^0.29.0",
+		"hono": "^4.12.27",
+		"octokit": "^5.0.5",
+		"zod": "^4.4.3"
+	},
+	"devDependencies": {
+		"typescript": "6.0.3",
+		"wrangler": "^4.105.0"
+	}
+}
