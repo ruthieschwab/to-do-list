@@ -155,7 +155,8 @@
   function syncErrorText(){
     var e = syncState.error;
     if(e === 'unauthorized') return 'GitHub rejected the token.';
-    if(e === 'forbidden') return "The token can't access gists (needs the gist scope).";
+    if(e === 'rate limited') return 'GitHub is rate-limiting requests for a while; sync will retry on its own.';
+    if(/^forbidden/.test(e)) return "GitHub refused the token (" + (e.split(': ')[1] || 'needs the gist scope') + ").";
     if(e === 'gist missing') return 'The sync gist was deleted; a new one will be created on the next sync.';
     if(/fetch/i.test(e)) return "Couldn't reach GitHub.";
     return 'Sync failed: ' + e;

@@ -62,11 +62,20 @@
         },
         body: body ? JSON.stringify(body) : undefined
       }).then(function(res){
+        if(res.ok) return res.status === 204 ? null : res.json();
         if(res.status === 401) throw new Error('unauthorized');
-        if(res.status === 403) throw new Error('forbidden');
         if(res.status === 404) throw new Error('missing');
-        if(!res.ok) throw new Error('http ' + res.status);
-        return res.status === 204 ? null : res.json();
+        // GitHub explains refusals in the body; a 403 is either a scope problem
+        // or a rate limit, and only the body/headers say which.
+        return res.text().then(function(text){
+          var msg = '';
+          try { msg = JSON.parse(text).message || ''; } catch(e){}
+          if(res.status === 403 || res.status === 429){
+            if(res.headers.get('x-ratelimit-remaining') === '0' || /rate limit/i.test(msg) || res.status === 429) throw new Error('rate limited');
+            throw new Error('forbidden' + (msg ? ': ' + msg : ''));
+          }
+          throw new Error('http ' + res.status + (msg ? ': ' + msg : ''));
+        });
       });
     }
 
