@@ -134,6 +134,30 @@ body {
 .dk-tool svg { display: block; }
 .dk-filter[data-filter="urgent"].active { border-color: var(--urgent-border); color: var(--danger); background: var(--urgent-bg); }
 .dk-filter[data-filter="none"] { font-size: 0.8rem; }
+.dk-tool.active { color: var(--accent-ink); }
+.dk-searchbar { display: flex; gap: 6px; margin-top: 8px; }
+.dk-searchbar input {
+  flex: 1; min-width: 0;
+  font: inherit; font-size: 0.95rem;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  -webkit-appearance: none; appearance: none;
+}
+.dk-searchbar input::placeholder { color: var(--ink-faint); }
+.dk-searchbar input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dk-searchclose {
+  font: inherit; font-size: 0.9rem; line-height: 1;
+  padding: 0 12px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-muted);
+}
+.dk-section {
+  margin: 18px 18px 0;
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
 
 .dk-add {
   position: fixed;
