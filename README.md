@@ -46,6 +46,14 @@ The token is stored only in that device's browser storage, never in the repo. **
 
 The filter row is a set of toggles. **All** selects every tag (and shows them all highlighted); tap a tag to deselect or reselect it, or tap **All** again to clear everything. A task is shown when *any* of its tags is selected; untagged tasks follow 🚫. ⏰ is a separate on/off filter for urgent tasks on top of the tag selection. Every launch starts at All.
 
+## Search
+
+The magnifier at the right of the tag filters opens a search box. Results update as you type and match the title, the note, or a tag word (`#house`), ignoring case. Open tasks come first (title matches before note-only matches, in list order), then done tasks under a *Done* divider. The tag and ⏰ filters still apply to results; the Active/Done switch doesn't. Escape or ✕ closes it; share acts on the results while a search is open.
+
+## Reordering with a filter on
+
+Dragging works the same in a filtered view. The moved task is placed in the full list as low as possible while still directly above the shown task that ended up just below it, so hidden tasks keep their order and the move looks the same once the filter is cleared. Dropped at the bottom of a filtered view, a task goes to the bottom of the whole list.
+
 ## Sharing a list
 
 The share button (the box-with-arrow icon at the right of the tag filters) acts on whatever is currently shown. Filter by a tag (say 🛠️), tap it, and the system share sheet opens with a heading line plus one task per line — the note, if any, after a dash — ready for Messages or Mail. On a desktop browser without a share sheet the same text is copied to the clipboard instead.

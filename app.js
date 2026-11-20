@@ -28,6 +28,8 @@
   try { localStorage.removeItem('docket.filter.v1'); } catch(e){} // left by an earlier version
   function allSelected(){ return filterSet.length === FILTER_KEYS.length; }
   var view = 'active';
+  var searchOpen = false;   // the search box is showing
+  var searchQuery = '';     // what's typed in it; non-empty switches the list to results
   var tickTimer = null;
   var syncPanelOpen = false;
 
@@ -62,6 +64,28 @@
     return tags.some(function(k){ return filterSet.indexOf(k) !== -1; });
   }
   function liveTasks(){ return state.tasks.filter(function(t){ return !t.deleted; }); }
+
+  // Search looks at the title, the note and the tag words, case-insensitively.
+  // Results keep the tag/urgent filters, ignore the Active/Done switch, and
+  // come open tasks first (title hits before note-only hits, in list order),
+  // then done tasks (most recently finished first).
+  function searching(){ return searchOpen && searchQuery.trim() !== ''; }
+  function searchTerms(){ return searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean); }
+  function hitRank(t, terms){
+    var title = (t.text || '').toLowerCase();
+    var rest = ((t.notes || '') + ' ' + (t.tags || []).map(function(k){ return TAG_LABELS[k] || k; }).join(' ')).toLowerCase();
+    var all = title + ' ' + rest;
+    if(!terms.every(function(w){ return all.indexOf(w) !== -1; })) return 0;
+    return terms.every(function(w){ return title.indexOf(w) !== -1; }) ? 2 : 1;
+  }
+  function searchResults(){
+    var terms = searchTerms();
+    function pick(list){
+      var ranked = list.map(function(t){ return { t: t, r: hitRank(t, terms) }; }).filter(function(x){ return x.r; });
+      return ranked.filter(function(x){ return x.r === 2; }).concat(ranked.filter(function(x){ return x.r === 1; })).map(function(x){ return x.t; });
+    }
+    return { open: pick(activeTasks()), done: pick(doneTasks()) };
+  }
   function activeTasks(){ return liveTasks().filter(function(t){ return !t.done && matchesFilter(t); }).sort(function(a,b){ return a.order - b.order; }); }
   function doneTasks(){ return liveTasks().filter(function(t){ return t.done && matchesFilter(t); }).sort(function(a,b){ return (b.doneAt||0) - (a.doneAt||0); }); }
 
@@ -194,7 +218,7 @@
 
 
   function viewBtn(key, label, count){
-    return '<button class="dk-filter' + (view === key ? ' active' : '') + '" data-view="' + key + '">' + label + ' (' + count + ')</button>';
+    return '<button class="dk-filter' + (view === key && !searching() ? ' active' : '') + '" data-view="' + key + '">' + label + ' (' + count + ')</button>';
   }
 
   function filterNarrowed(){ return filterUrgent || !allSelected(); }
@@ -208,9 +232,16 @@
   // The tasks currently shown, as plain text: a heading line, then one task per
   // line (its note after a dash), for pasting into a message or email.
   function listAsText(){
-    var tasks = view === 'done' ? doneTasks() : activeTasks();
-    var heading = (filterNarrowed() ? filterLabel() : 'To do') + (view === 'done' ? ' (done)' : '') +
-      ' — ' + tasks.length + (tasks.length === 1 ? ' task' : ' tasks');
+    var tasks, heading;
+    if(searching()){
+      var r = searchResults();
+      tasks = r.open.concat(r.done);
+      heading = 'Search "' + searchQuery.trim() + '"' + (filterNarrowed() ? ' · ' + filterLabel() : '');
+    } else {
+      tasks = view === 'done' ? doneTasks() : activeTasks();
+      heading = (filterNarrowed() ? filterLabel() : 'To do') + (view === 'done' ? ' (done)' : '');
+    }
+    heading += ' — ' + tasks.length + (tasks.length === 1 ? ' task' : ' tasks');
     return [heading].concat(tasks.map(function(t){
       return '- ' + t.text + (t.notes ? ' — ' + t.notes.trim().replace(/\s*\n+\s*/g, '; ') : '');
     })).join('\n');
@@ -258,6 +289,11 @@
               return '<button class="dk-filter' + (on ? ' active' : '') + '" data-filter="' + k + '" title="' + TAG_LABELS[k] + '" aria-label="' + TAG_LABELS[k] + '" aria-pressed="' + on + '">' + TAG_EMOJI[k] + '</button>';
             }).join('') +
             '<span class="dk-tools">' +
+              '<button class="dk-filter dk-tool' + (searchOpen ? ' active' : '') + '" id="dk-searchbtn" title="Search open and done tasks" aria-label="Search" aria-pressed="' + searchOpen + '">' +
+                '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' +
+                  '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.9-4.9"/>' +
+                '</svg>' +
+              '</button>' +
               '<button class="dk-filter dk-tool" id="dk-share" title="' + (navigator.share ? 'Share the tasks shown' : 'Copy the tasks shown, one per line') + '" aria-label="Share">' +
                 '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
                   '<path d="M8 9H6.5A1.5 1.5 0 0 0 5 10.5v9A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 17.5 9H16"/>' +
@@ -265,9 +301,24 @@
                 '</svg>' +
               '</button>' +
             '</span></div>';
+    if(searchOpen){
+      html += '<div class="dk-searchbar">' +
+        '<input type="text" id="dk-search" placeholder="Search open and done tasks…" value="' + esc(searchQuery) + '" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search tasks">' +
+        '<button class="dk-searchclose" id="dk-searchclose" aria-label="Close search">✕</button>' +
+      '</div>';
+    }
     html += '</div>';
     html += '<div class="dk-add"><input type="text" id="dk-new" placeholder="Add a task…" autocomplete="off"><button id="dk-addbtn">Add</button></div>';
-    if(view === 'done'){
+    if(searching()){
+      var res = searchResults();
+      if(!res.open.length && !res.done.length){
+        html += '<div class="dk-empty">Nothing matches “' + esc(searchQuery.trim()) + '”' + (filterNarrowed() ? ' in ' + filterLabel() : '') + '.</div>';
+      } else {
+        if(res.open.length) html += '<ul class="dk-list">' + res.open.map(rowHTML).join('') + '</ul>';
+        else html += '<div class="dk-section">No open tasks match</div>';
+        if(res.done.length) html += '<div class="dk-section">Done</div><ul class="dk-list">' + res.done.map(rowHTML).join('') + '</ul>';
+      }
+    } else if(view === 'done'){
       if(done.length === 0){
         html += '<div class="dk-empty">' + (filterNarrowed() ? 'Nothing done matches ' + filterLabel() + '.' : 'Nothing done yet.') + '</div>';
       } else {
@@ -392,6 +443,31 @@
       if(navigator.share){ navigator.share({ text: text }).catch(function(){}); return; }
       copyText(text).then(function(ok){ flashLabel(shareBtn, ok ? 'copied ✓' : "couldn't copy"); });
     });
+    // Search: the box lives in the header; every keystroke re-renders the list.
+    // render() rebuilds the DOM, so put the caret back in the box afterwards.
+    function focusSearch(){
+      var el = document.getElementById('dk-search');
+      if(!el) return;
+      el.focus();
+      try { el.setSelectionRange(el.value.length, el.value.length); } catch(e){}
+    }
+    function closeSearch(){ searchOpen = false; searchQuery = ''; render(); }
+    document.getElementById('dk-searchbtn').addEventListener('click', function(){
+      if(searchOpen){ closeSearch(); return; }
+      searchOpen = true;
+      render();
+      focusSearch();
+    });
+    var searchEl = document.getElementById('dk-search');
+    if(searchEl){
+      searchEl.addEventListener('input', function(){
+        searchQuery = searchEl.value;
+        render();
+        focusSearch();
+      });
+      searchEl.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ e.preventDefault(); closeSearch(); } });
+      document.getElementById('dk-searchclose').addEventListener('click', closeSearch);
+    }
     var importFile = document.getElementById('dk-importfile');
     document.getElementById('dk-import').addEventListener('click', function(){ importFile.click(); });
     importFile.addEventListener('change', function(){
@@ -434,6 +510,7 @@
     document.querySelectorAll('[data-view]').forEach(function(btn){
       btn.addEventListener('click', function(){
         view = btn.getAttribute('data-view');
+        if(searching()){ searchOpen = false; searchQuery = ''; }
         render();
       });
     });
@@ -760,14 +837,31 @@
       var movedId = order[dragCtx.curIdx];
       order.splice(dragCtx.curIdx, 1);
       order.splice(newIdx, 0, movedId);
+      placeInFullList(movedId, order[newIdx + 1] || null);
     }
-    order.forEach(function(id, i){
-      var t = state.tasks.find(function(x){ return x.id === id; });
-      if(t && t.order !== i){ t.order = i; touch(t); }
-    });
     dragCtx = null;
     render();
     save();
+  }
+
+  // The drag happened among the tasks shown, which may be a filtered subset.
+  // Position the moved task in the whole open list as low as it can go while
+  // still sitting above the shown task that ended up just below it (belowId);
+  // with nothing shown below it, it goes to the very bottom. Hidden tasks keep
+  // their relative order.
+  function placeInFullList(movedId, belowId){
+    var all = liveTasks().filter(function(t){ return !t.done && t.id !== movedId; }).sort(function(a,b){ return a.order - b.order; });
+    var moved = state.tasks.find(function(x){ return x.id === movedId; });
+    if(!moved) return;
+    var at = all.length;
+    if(belowId){
+      var i = all.findIndex(function(t){ return t.id === belowId; });
+      if(i !== -1) at = i;
+    }
+    all.splice(at, 0, moved);
+    all.forEach(function(t, i){
+      if(t.order !== i){ t.order = i; touch(t); }
+    });
   }
 
   function closeEditingIfOutside(e){
