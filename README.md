@@ -44,7 +44,7 @@ The token is stored only in that device's browser storage, never in the repo. **
 
 ## Filtering
 
-The filter row is a set of toggles. **All** selects every tag (and shows them all highlighted); tap a tag to deselect or reselect it, or tap **All** again to clear everything. A task is shown when *any* of its tags is selected; untagged tasks follow 🚫. ⏰ is a separate on/off filter for urgent tasks on top of the tag selection. The selection is remembered between launches.
+The filter row is a set of toggles. **All** selects every tag (and shows them all highlighted); tap a tag to deselect or reselect it, or tap **All** again to clear everything. A task is shown when *any* of its tags is selected; untagged tasks follow 🚫. ⏰ is a separate on/off filter for urgent tasks on top of the tag selection. Every launch starts at All.
 
 ## Sharing a list
 
