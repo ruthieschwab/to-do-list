@@ -27,10 +27,15 @@
     });
   }
 
+  // Canonical copy of each task: no transient fields, keys in a fixed order.
+  // Key order matters because normalize() compares JSON text: the same task
+  // read back from the gist, or touched by an older version, can carry its
+  // fields in a different order, and that must not count as a change (it used
+  // to, which made every sync write the gist again).
   function strip(tasks){
     return (tasks || []).map(function(t){
       var o = {};
-      Object.keys(t).forEach(function(k){ if(k !== '_notesOpen') o[k] = t[k]; });
+      Object.keys(t).sort().forEach(function(k){ if(k !== '_notesOpen' && t[k] !== undefined) o[k] = t[k]; });
       return o;
     });
   }
@@ -71,7 +76,15 @@
           var msg = '';
           try { msg = JSON.parse(text).message || ''; } catch(e){}
           if(res.status === 403 || res.status === 429){
-            if(res.headers.get('x-ratelimit-remaining') === '0' || /rate limit/i.test(msg) || res.status === 429) throw new Error('rate limited');
+            if(res.headers.get('x-ratelimit-remaining') === '0' || /rate limit/i.test(msg) || res.status === 429){
+              // Say when GitHub will accept requests again, if it tells us.
+              var err = new Error('rate limited');
+              var reset = Number(res.headers.get('x-ratelimit-reset')) * 1000;
+              var after = Number(res.headers.get('retry-after')) * 1000;
+              if(after > 0) err.resetAt = Date.now() + after;
+              else if(reset > Date.now()) err.resetAt = reset;
+              throw err;
+            }
             throw new Error('forbidden' + (msg ? ': ' + msg : ''));
           }
           throw new Error('http ' + res.status + (msg ? ': ' + msg : ''));

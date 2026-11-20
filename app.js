@@ -36,7 +36,7 @@
   // ---- Sync (optional; see sync.js) ----
   var SYNC_KEY = 'docket.sync.v1';
   var syncCfg = loadSyncCfg();
-  var syncState = { status: syncCfg ? 'idle' : 'off', lastAt: 0, error: '', inflight: false, again: false, timer: null };
+  var syncState = { status: syncCfg ? 'idle' : 'off', lastAt: 0, error: '', inflight: false, again: false, timer: null, retryAt: 0 };
 
   function loadSyncCfg(){
     try { var c = JSON.parse(localStorage.getItem(SYNC_KEY)); return c && c.token ? c : null; } catch(e){ return null; }
@@ -137,6 +137,11 @@
     return verb + ' ' + d + 'd ago';
   }
 
+  function clock(ts){
+    var d = new Date(ts);
+    try { return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch(e){ return d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2); }
+  }
+
   function statusText(){
     if(!storageOk) return "can't save on this device";
     if(syncCfg){
@@ -155,7 +160,7 @@
   function syncErrorText(){
     var e = syncState.error;
     if(e === 'unauthorized') return 'GitHub rejected the token.';
-    if(e === 'rate limited') return 'GitHub is rate-limiting requests for a while; sync will retry on its own.';
+    if(e === 'rate limited') return 'GitHub is rate-limiting requests; sync will retry ' + (syncState.retryAt ? 'at ' + clock(syncState.retryAt) : 'in a few minutes') + '. Changes are saved on this device.';
     if(/^forbidden/.test(e)) return "GitHub refused the token (" + (e.split(': ')[1] || 'needs the gist scope') + ").";
     if(e === 'gist missing') return 'The sync gist was deleted; a new one will be created on the next sync.';
     if(/fetch/i.test(e)) return "Couldn't reach GitHub.";
@@ -491,7 +496,7 @@
       tokenInput.addEventListener('keydown', function(e){ if(e.key === 'Enter') doConnect(); });
     }
     var syncNowBtn = document.getElementById('dk-syncnow');
-    if(syncNowBtn) syncNowBtn.addEventListener('click', function(){ scheduleSync(0); });
+    if(syncNowBtn) syncNowBtn.addEventListener('click', function(){ scheduleSync(0, true); });
     var disconnectBtn = document.getElementById('dk-disconnect');
     if(disconnectBtn) disconnectBtn.addEventListener('click', disconnectSync);
 
@@ -880,10 +885,15 @@
     }
   }
 
-  function scheduleSync(delay){
+  // While GitHub is rate-limiting us, every automatic sync waits for the reset
+  // time instead of burning the window further; `force` (the Sync now button)
+  // ignores that.
+  function scheduleSync(delay, force){
     if(!syncCfg) return;
     clearTimeout(syncState.timer);
-    syncState.timer = setTimeout(syncNow, delay == null ? 1500 : delay);
+    var ms = delay == null ? 1500 : delay;
+    if(!force && syncState.retryAt > Date.now()) ms = Math.max(ms, syncState.retryAt - Date.now() + 1000);
+    syncState.timer = setTimeout(syncNow, ms);
   }
 
   // Pull the gist, merge with local, write back whichever side changed.
@@ -919,9 +929,14 @@
       syncState.status = 'idle';
       syncState.lastAt = Date.now();
       syncState.error = '';
+      syncState.retryAt = 0;
     }, function(err){
       syncState.status = 'error';
       syncState.error = (err && err.message) || String(err);
+      if(syncState.error === 'rate limited'){
+        syncState.retryAt = (err && err.resetAt) || Date.now() + 5 * 60 * 1000;
+        scheduleSync(0);
+      }
     }).then(function(){
       syncState.inflight = false;
       refreshStatus();
